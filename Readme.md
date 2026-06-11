@@ -78,21 +78,40 @@ Weights are configured in config_orchestrator.json.
 
 ## Setup
 
-### 1. Install Git LFS (required for model weights)
 
-Skip this part if you plan to retrain the models from scratch.
+### 1. Create a virtual environment
 
-```
-brew install git-lfs # MacOS
-git lfs install. # Windows
-git lfs pull
+Requires **Python 3.12**.
+
+```bash
+python3.12 -m venv grid2op
+
+# macOS / Linux
+source grid2op/bin/activate
+
+# Windows
+grid2op\Scripts\activate
+
+pip install --upgrade pip
 ```
 
 ### 2. Install Python dependencies
 
-```
+**Windows / Linux (NVIDIA GPU, CUDA 12.4)**
+```bash
 pip install -r requirements.txt
 ```
+
+**macOS (Apple Silicon / CPU)**
+```bash
+# Install CPU-only PyTorch first (no CUDA on macOS)
+pip install torch torchvision torchaudio
+
+# Install remaining dependencies (skips the CUDA torch lines)
+grep -vE "^torch|^torchvision|^torchaudio|^--extra" requirements.txt | pip install -r /dev/stdin
+```
+
+> `tensorflow-metal` installs automatically on macOS via the platform marker in `requirements.txt`, enabling GPU acceleration through Apple Metal.
 
 
 ## Reproducibility
