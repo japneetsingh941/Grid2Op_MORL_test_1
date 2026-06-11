@@ -12,7 +12,6 @@ visualize_grid.py
 *.pyc
 training_data_track1/__pycache__/config.cpython-312.pyc
 /SeniorStudent/ckpt
-/ActionSpace
 action_analysis.png
 grid_topology.png
 /JuniorStudent/tfboard
