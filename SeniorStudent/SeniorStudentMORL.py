@@ -55,6 +55,7 @@ except ImportError:
 
 # ---- cluster time cap (shared with orchestrator via ORCH_START_TIME) ----
 MAX_RUNTIME_SECONDS = ((12)-0.5) * 3600  # 23h30
+#MAX_RUNTIME_SECONDS = 60
 
 _orch_start = os.environ.get("ORCH_START_TIME")
 try:
@@ -171,6 +172,7 @@ class Run_env(object):
                             infos[idx],
                             self.morl_params,
                         )
+                        
 
                         # Build gated scalar reward from transformed metrics, using JSON-configured weights
                         scalar_info = build_gated_scalar_reward(metrics, self.metrics_weights)
@@ -188,7 +190,8 @@ class Run_env(object):
                     except Exception as e:
                         # If anything fails, fall back to original reward for this env
                         # and skip metrics for that step.
-                        # print(f"[MORL] metric computation error on env {idx}: {e}")
+                        #print(f"[MORL] metric computation error on env {idx}: {e}")
+
                         effective_rs[idx] = float(rs[idx])
                         continue
 

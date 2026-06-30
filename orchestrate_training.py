@@ -9,7 +9,7 @@ import time
 
 # Global safety limit for the whole pipeline (23h30)
 MAX_RUNTIME_SECONDS = ((12)-0.5) * 3600
-
+#MAX_RUNTIME_SECONDS = 60
 def log(msg: str, verbose: bool = True):
     if verbose:
         print(f"[ORCH] {msg}")

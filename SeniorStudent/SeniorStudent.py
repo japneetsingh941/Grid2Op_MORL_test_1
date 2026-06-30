@@ -44,8 +44,8 @@ except ImportError:
     USE_WANDB = False
 
 # ---- cluster time cap (shared with orchestrator via ORCH_START_TIME) ----
-MAX_RUNTIME_SECONDS = ((12)-0.5) * 3600  # 23h30
-
+#MAX_RUNTIME_SECONDS = ((12)-0.5) * 3600  # 23h30
+MAX_RUNTIME_SECONDS = 60
 _orch_start = os.environ.get("ORCH_START_TIME")
 try:
     # If orchestrate_training started us, use its start time

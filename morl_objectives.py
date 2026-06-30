@@ -517,6 +517,39 @@ def metric_l2rpn_default(next_obs, params: MorlParams) -> float:
     score = np.maximum(1.0 - x**2, 0.0)
     return float(score.sum() / 10000.0)
 
+# new metric implementation:
+def metric_risk_max_line_loading(next_obs, params: MorlParams) -> float:
+    """
+    Risk metric based on the maximum transmission line loading.
+
+    Computes:
+        max_i(rho_i)
+
+    where rho_i is the loading of transmission line i.
+    """
+
+    rho = _safe_array(getattr(next_obs, "rho", None))
+
+    if rho is None or rho.size == 0:
+        return 0.0
+
+    rho = np.clip(rho, 0.0, None)
+
+    max_loading = np.max(rho)
+
+    return float(max_loading) * params.risk_scale
+
+def metric_overloaded_lines(next_obs, params: MorlParams) -> float:
+    """
+    Counts the number of overloaded lines.
+    A line is overloaded if rho > 1.
+    """
+
+    rho = _safe_array(getattr(next_obs, "rho", None))
+    if rho is None:
+        return 0.0
+
+    return float(np.sum(rho > 1.0))
 
 
 # ===================================================================
@@ -533,12 +566,28 @@ def compute_morl_metrics(
 ) -> Dict[str, float]:
 
     metrics: Dict[str, float] = {}
+    # new changes ============================================================
+
+
+    metrics["dummy_metric"] = 100.0
+
+    #metrics["risk"] = metric_risk_max_line_loading(next_obs, params)
+    metrics["risk"] = metric_overloaded_lines(next_obs, params)
+
+
 
     metrics["survival"] = metric_survival(reward)
     # New main robustness metric: step-wise longevity
     metrics["longevity"] = metric_longevity(done, info)
 
-    metrics["risk"] = metric_risk(next_obs, params)
+
+# changed here risk to risk_old
+
+
+
+
+
+    metrics["risk_old"] = metric_risk(next_obs, params)
     metrics["econ_cost"] = metric_economic(obs, next_obs, params)
 
     co2, ren = metric_co2_and_renewables(next_obs, params)
