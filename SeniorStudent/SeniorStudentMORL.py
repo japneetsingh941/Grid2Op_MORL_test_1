@@ -177,7 +177,7 @@ class Run_env(object):
                         # Build gated scalar reward from transformed metrics, using JSON-configured weights
                         scheduled_weights = get_scheduled_weights(
                             self.global_step,
-                            self.metrics_weights
+                            self.metrics_weights,
                             self.curriculum_cfg
                         )
                         
