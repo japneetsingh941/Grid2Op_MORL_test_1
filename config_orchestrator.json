@@ -27,24 +27,27 @@
     "run_runner": true
   },
   "morl":{
-    "w_fair_rho": 0.0,
+    "w_fair_rho": 1.0,
     "w_fair_curt": 0.0,
     "w_equity": 0.0,
-    "w_ren": 0.0,
+
+    "w_ren": 1.0,
     "w_co2": 0.0,
     "w_risk": 0.0,
     "w_n1": 0.0,
     "w_econ": 0.0,
+
     "w_simplicity": 1.0,
     "w_l2rpn": 0.0,
+
     "tau_primary": 0.0,
+
+    "alpha_struct": 1.0,
     "alpha_fair": 0.0,
-    "alpha_sust": 0.0,
-    "alpha_struct": 1.0
-  },
+    "alpha_sust": 0.0
+},
   "curriculum": {
   "enabled": true,
-
   "stages": [
     {
       "step": 0,
@@ -55,19 +58,19 @@
       }
     },
     {
-      "step": 10,
+      "step": 400000,
       "weights": {
-        "alpha_struct": 0.75,
-        "alpha_fair": 0.25,
+        "alpha_struct": 0.8,
+        "alpha_fair": 0.2,
         "alpha_sust": 0.0
       }
     },
     {
-      "step": 20,
+      "step": 800000,
       "weights": {
-        "alpha_struct": 0.50,
-        "alpha_fair": 0.50,
-        "alpha_sust": 0.25
+        "alpha_struct": 0.6,
+        "alpha_fair": 0.2,
+        "alpha_sust": 0.2
       }
     }
   ]
