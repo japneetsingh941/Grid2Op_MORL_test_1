@@ -397,12 +397,43 @@ if __name__ == '__main__':
             f"morl/{k}": float(v) for k, v in runner.metrics_weights.items()
         }
         base_config.update(morl_weight_config)
+        # Save curriculum configuration
+        base_config["curriculum"] = runner.curriculum_cfg
+        curriculum = runner.curriculum_cfg
 
+        base_config["curriculum_enabled"] = curriculum.get("enabled", False)
+
+        for i, stage in enumerate(curriculum.get("stages", [])):
+
+            base_config[f"curriculum/stage_{i}_step"] = stage["step"]
+
+            for key, value in stage["weights"].items():
+
+                base_config[f"curriculum/stage_{i}/{key}"] = value
+        
+
+        try:
+            base_config["git_commit"] = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=repo_root
+            ).decode().strip()
+
+            base_config["git_branch"] = subprocess.check_output(
+                ["git", "branch", "--show-current"],
+                cwd=repo_root
+            ).decode().strip()
+
+        except Exception:
+            pass
+
+        except Exception:
+            pass                
         wandb.init(
             project="vt1_grid2op_senior_ppo",
             name=run_name,
             config=base_config,
         )
+        wandb.save(str(cfg_path))
 
 
     # Ensure log directory exists
