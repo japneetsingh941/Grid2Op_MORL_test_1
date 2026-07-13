@@ -10,7 +10,7 @@ training process:
 author: chen binbin
 mail: cbb@cbb1996.com
 """
-
+from SeniorStudent.curriculum_scheduler import get_stage
 import time
 import os
 import json
@@ -171,6 +171,7 @@ class Run_env(object):
                             infos[idx],
                             self.morl_params,
                         )
+                        stage = get_stage(self.global_step)
 
                         # Build gated scalar reward from transformed metrics, using JSON-configured weights
                         scalar_info = build_gated_scalar_reward(metrics, self.metrics_weights)
