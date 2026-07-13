@@ -10,7 +10,7 @@ training process:
 author: chen binbin
 mail: cbb@cbb1996.com
 """
-from SeniorStudent.curriculum_scheduler import get_stage
+from curriculum_scheduler import get_stage
 import time
 import os
 import json
