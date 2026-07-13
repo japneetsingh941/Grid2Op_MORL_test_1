@@ -10,7 +10,7 @@ training process:
 author: chen binbin
 mail: cbb@cbb1996.com
 """
-from curriculum_scheduler import get_stage
+from curriculum_scheduler import get_scheduled_weights
 import time
 import os
 import json
@@ -174,7 +174,15 @@ class Run_env(object):
                         stage = get_stage(self.global_step)
 
                         # Build gated scalar reward from transformed metrics, using JSON-configured weights
-                        scalar_info = build_gated_scalar_reward(metrics, self.metrics_weights)
+                        scheduled_weights = get_scheduled_weights(
+                            self.global_step,
+                            self.metrics_weights
+                        )
+
+                        scalar_info = build_gated_scalar_reward(
+                            metrics,
+                            scheduled_weights
+                        )                       
 
 
                         # Add scalarization components into the metrics dict for logging
