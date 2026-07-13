@@ -101,6 +101,7 @@ class Run_env(object):
             cfg = json.load(f)
 
         self.metrics_weights = cfg.get("morl", {})
+        self.curriculum_cfg = cfg.get("curriculum", {})
 
     def run_n_steps(self, n_steps=None):
         def swap_and_flatten(arr):
@@ -177,6 +178,7 @@ class Run_env(object):
                         scheduled_weights = get_scheduled_weights(
                             self.global_step,
                             self.metrics_weights
+                            self.curriculum_cfg
                         )
                         
                         scalar_info = build_gated_scalar_reward(

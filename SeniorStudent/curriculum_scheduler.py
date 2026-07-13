@@ -2,29 +2,52 @@ import copy
 
 _last_stage = None
 
-def get_scheduled_weights(global_step, base_weights):
+
+def get_scheduled_weights(global_step, base_weights, curriculum_cfg):
+    """
+    Returns a copy of the MORL weights updated according to the
+    curriculum configuration.
+    """
+
     global _last_stage
 
+    # Start from the default MORL weights
     weights = copy.deepcopy(base_weights)
 
-    if global_step < 10:
-        stage = 0
-        weights["alpha_struct"] = 1.0
+    # Curriculum disabled -> use original weights
+    if not curriculum_cfg.get("enabled", False):
+        return weights
 
-    elif global_step < 20:
-        stage = 1
-        weights["alpha_struct"] = 0.5
+    stages = curriculum_cfg.get("stages", [])
 
-    else:
-        stage = 2
-        weights["alpha_struct"] = 0.0
+    if len(stages) == 0:
+        return weights
 
-    if stage != _last_stage:
-        print("\n========================")
-        print(f"Stage {stage}")
-        print(f"Step {global_step}")
-        print(f"alpha_struct = {weights['alpha_struct']}")
-        print("========================\n")
-        _last_stage = stage
+    # Find the current stage
+    current_stage = stages[0]
+    stage_index = 0
+
+    for i, stage in enumerate(stages):
+        if global_step >= stage["step"]:
+            current_stage = stage
+            stage_index = i
+        else:
+            break
+
+    # Apply every scheduled weight
+    for key, value in current_stage.get("weights", {}).items():
+        weights[key] = value
+
+    # Print only when the stage changes
+    if stage_index != _last_stage:
+        print(
+            f"[Scheduler] Stage {stage_index} at step {global_step}",
+            flush=True
+        )
+        print(
+            f"[Scheduler] Active weights: {current_stage['weights']}",
+            flush=True
+        )
+        _last_stage = stage_index
 
     return weights
