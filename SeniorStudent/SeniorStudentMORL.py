@@ -175,6 +175,11 @@ class Run_env(object):
                         
 
                         # Build gated scalar reward from transformed metrics, using JSON-configured weights
+                        if self.global_step % 50000 == 0:
+                            print(
+                                f"[DEBUG] Scheduler sees global_step={self.global_step}",
+                                flush=True
+                            )
                         scheduled_weights = get_scheduled_weights(
                             self.global_step,
                             self.metrics_weights,
@@ -426,15 +431,12 @@ if __name__ == '__main__':
         except Exception:
             pass
 
-        except Exception:
-            pass                
+                       
         wandb.init(
             project="vt1_grid2op_senior_ppo",
             name=run_name,
             config=base_config,
         )
-        repo_root = Path(PARENT)
-        cfg_path = repo_root / "config_orchestrator.json"
         wandb.save(str(cfg_path))
 
 
