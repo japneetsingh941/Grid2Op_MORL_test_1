@@ -20,7 +20,7 @@ def get_scheduled_weights(global_step, base_weights, curriculum_cfg):
 
     stages = curriculum_cfg.get("stages", [])
     if _last_stage is None:
-    print(f"[DEBUG] Curriculum stages: {stages}", flush=True)
+        print(f"[DEBUG] Curriculum stages: {stages}", flush=True)
 
     if len(stages) == 0:
         return weights
