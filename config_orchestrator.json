@@ -46,36 +46,87 @@
     "alpha_fair": 0.0,
     "alpha_sust": 0.0
 },
-  "curriculum": {
-  "enabled": true,
-  "stages": [
-    {
-      "step": 0,
-      "weights": {
-        "alpha_struct": 1.0,
-        "alpha_fair": 0.0,
-        "alpha_sust": 0.0
-      }
-    },
-    {
-      "step": 100,
-      "weights": {
-        "alpha_struct": 0.8,
-        "alpha_fair": 0.2,
-        "alpha_sust": 0.0
-      }
-    },
-    {
-      "step": 200,
-      "weights": {
-        "alpha_struct": 0.6,
-        "alpha_fair": 0.2,
-        "alpha_sust": 0.2
-      }
-    }
-  ]
-},
+"curriculum": {
+    "enabled": true,
+    "stages": [
 
+        {   "name": "Survival",
+            "step": 0,
+            "weights": {
+
+                "w_fair_rho": 0.0,
+                "w_fair_curt": 1.0,
+                "w_equity": 1.0,
+
+                "w_ren": 0.0,
+                "w_co2": 1.0,
+                "w_risk": 0.0,
+                "w_n1": 0.0,
+                "w_econ": 0.0,
+
+                "w_simplicity": 0.0,
+                "w_l2rpn": 0.0,
+
+                "tau_primary": 0.0,
+
+                "alpha_struct": 0.0,
+                "alpha_fair": 0.67,
+                "alpha_sust": 0.33
+            }
+        },
+
+        {   "name": "Fairness",
+            "step": 500000,
+            "weights": {
+
+                "w_fair_rho": 1.0,
+                "w_fair_curt": 1.0,
+                "w_equity": 1.0,
+
+                "w_ren": 1.0,
+                "w_co2": 1.0,
+                "w_risk": 1.0,
+                "w_n1": 1.0,
+                "w_econ": 1.0,
+
+                "w_simplicity": 1.0,
+                "w_l2rpn": 1.0,
+
+                "tau_primary": 0.5,
+
+                "alpha_struct": 0.30,
+                "alpha_fair": 0.10,
+                "alpha_sust": 0.10
+            }
+        },
+
+        {   "name": "Sustainability",
+            "step": 1000000,
+            "weights": {
+
+                "w_fair_rho": 0.0,
+                "w_fair_curt": 0.0,
+                "w_equity": 0.0,
+
+                "w_ren": 0.0,
+                "w_co2": 0.0,
+                "w_risk": 0.0,
+                "w_n1": 0.0,
+                "w_econ": 0.0,
+
+                "w_simplicity": 1.0,
+                "w_l2rpn": 0.0,
+
+                "tau_primary": 0.0,
+
+                "alpha_struct": 1.00,
+                "alpha_fair": 0.00,
+                "alpha_sust": 0.00
+            }
+        }
+
+    ]
+}
   "junior_student": {
     "train_args": ["Train"],
     "convert_args": ["Convert"]

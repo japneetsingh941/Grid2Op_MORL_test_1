@@ -37,9 +37,18 @@ def get_scheduled_weights(global_step, base_weights, curriculum_cfg):
             break
 
     # Apply every scheduled weight
-    for key, value in current_stage.get("weights", {}).items():
-        weights[key] = value
+    
+    stage_weights = current_stage.get("weights", {})
 
+    for key, value in stage_weights.items():
+
+        if key not in weights:
+            raise KeyError(
+                f"Unknown MORL weight '{key}' "
+                f"in curriculum stage {stage_index}"
+            )
+
+        weights[key] = value
     # Print only when the stage changes
     if stage_index != _last_stage:
         print(

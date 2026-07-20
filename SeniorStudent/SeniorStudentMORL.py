@@ -175,16 +175,18 @@ class Run_env(object):
                         
 
                         # Build gated scalar reward from transformed metrics, using JSON-configured weights
-                        if self.global_step % 50000 == 0:
-                            print(
-                                f"[DEBUG] Scheduler sees global_step={self.global_step}",
-                                flush=True
-                            )
+                        
                         scheduled_weights = get_scheduled_weights(
                             self.global_step,
                             self.metrics_weights,
                             self.curriculum_cfg
                         )
+                        if self.global_step % 50000 == 0:
+                            print(
+                                f"[DEBUG] Scheduler sees global_step={self.global_step}",
+                                f"weights={scheduled_weights}",
+                                flush=True
+                            )
                         
                         scalar_info = build_gated_scalar_reward(
                             metrics,
