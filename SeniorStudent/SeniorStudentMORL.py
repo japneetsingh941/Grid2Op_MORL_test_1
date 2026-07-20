@@ -414,10 +414,16 @@ if __name__ == '__main__':
 
             base_config[f"curriculum/stage_{i}_step"] = stage["step"]
 
-            for key, value in stage["weights"].items():
+            # Save which named configuration this stage uses
+            config_name = stage["config"]
+            base_config[f"curriculum/stage_{i}_config"] = config_name
+
+            # Expand the configuration into individual weights
+            stage_weights = curriculum["morl_configs"][config_name]
+
+            for key, value in stage_weights.items():
 
                 base_config[f"curriculum/stage_{i}/{key}"] = value
-        
 
         try:
             base_config["git_commit"] = subprocess.check_output(

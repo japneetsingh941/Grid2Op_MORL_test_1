@@ -40,48 +40,30 @@ def get_scheduled_weights(global_step, base_weights, curriculum_cfg):
         else:
             break
 
-    # Get the configuration name for this stage
-    config_name = current_stage["config"]
+        # Support both the old and new JSON formats
 
-    # Retrieve all stored MORL configurations
-    configs = curriculum_cfg.get("morl_configs", {})
+    if "weights" in current_stage:
+        # Old format
+        stage_weights = current_stage["weights"]
+        config_name = current_stage.get("name", f"Stage {stage_index}")
 
-    if config_name not in configs:
-        raise KeyError(
-            f"Unknown curriculum configuration '{config_name}'"
-        )
+    elif "config" in current_stage:
+        # New format
+        config_name = current_stage["config"]
 
-    # Load the selected configuration
-    stage_weights = configs[config_name]
+        configs = curriculum_cfg.get("morl_configs", {})
 
-    # Override the default weights
-    for key, value in stage_weights.items():
-
-        if key not in weights:
+        if config_name not in configs:
             raise KeyError(
-                f"Unknown MORL weight '{key}' "
-                f"in curriculum configuration '{config_name}'"
+                f"Unknown curriculum configuration '{config_name}'"
             )
 
-        weights[key] = value
+        stage_weights = configs[config_name]
 
-    # Print only when the stage changes
-    if stage_index != _last_stage:
-
-        print(
-            f"[Scheduler] Stage {stage_index} "
-            f"({config_name}) at step {global_step}",
-            flush=True
+    else:
+        raise KeyError(
+            "Curriculum stage must contain either "
+            "'weights' or 'config'."
         )
-
-        print(
-            f"[Scheduler] Active weights:",
-            flush=True
-        )
-
-        for key, value in stage_weights.items():
-            print(f"    {key}: {value}", flush=True)
-
-        _last_stage = stage_index
 
     return weights
