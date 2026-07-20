@@ -118,15 +118,15 @@
   "stages": [
     {
       "step": 0,
-      "config": "Survival"
-    },
-    {
-      "step": 500000,
       "config": "Fairness"
     },
     {
-      "step": 1000000,
+      "step": 400000,
       "config": "Sustainability"
+    },
+    {
+      "step": 800000,
+      "config": "Survival"
     }
   ]
 },
@@ -141,7 +141,7 @@
     "ckpt_source_dir": "SeniorStudent/ckpt/ppo_best",
     "ckpt_target_dir": "submission/ppo-ckpt",
     "wipe_target_before_copy": true
-  },
+  }
 
   
 }
