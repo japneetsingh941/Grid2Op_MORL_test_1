@@ -126,7 +126,7 @@
         }
 
     ]
-}
+},
   "junior_student": {
     "train_args": ["Train"],
     "convert_args": ["Convert"]
