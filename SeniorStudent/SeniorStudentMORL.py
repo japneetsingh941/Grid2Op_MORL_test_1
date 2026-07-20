@@ -437,6 +437,8 @@ if __name__ == '__main__':
             name=run_name,
             config=base_config,
         )
+        repo_root = Path(PARENT)
+        cfg_path = repo_root / "config_orchestrator.json"
         wandb.save(str(cfg_path))
 
 
