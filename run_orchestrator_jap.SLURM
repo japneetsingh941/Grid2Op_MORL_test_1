@@ -127,14 +127,21 @@ PY
 fi
 
 # ---------- Weights & Biases (assumes you've run `wandb login` once) ----------
-export WANDB_API_KEY="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"
+'''export WANDB_API_KEY="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"
 export WANDB_PROJECT="grid2op"
 export WANDB_ENTITY="japneet-singh-can-university-of-toronto"
 export WANDB_MODE=online
 export WANDB_DIR="$LOG_DIR/wandb"
 export WANDB_NAME="ols_${SLURM_JOB_ID}"
-export WANDB_TAGS="grid2op,PPO,NOMORL"
+export WANDB_TAGS="grid2op,PPO,NOMORL". '''
 
+export WANDB_API_KEY="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"
+export WANDB_PROJECT="zhaw morl"
+export WANDB_ENTITY="japneet-singh-jal-university-of-toronto"
+export WANDB_MODE=online
+export WANDB_DIR="$LOG_DIR/wandb"
+export WANDB_NAME="ols_${SLURM_JOB_ID}"
+export WANDB_TAGS="grid2op,PPO,NOMORL"
 # ---------- Run ----------
 cd "$PROJECT_DIR"
 echo "[RUN] Start $(date)"
