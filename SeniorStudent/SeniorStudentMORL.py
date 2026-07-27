@@ -469,7 +469,7 @@ if __name__ == '__main__':
                     wandb.log({
                         "status": "graceful_exit_due_to_time_limit",
                         "epoch_finished": update,
-                    }, step=update)
+                    }, step=runner.global_step)
                     wandb.finish()
                 except Exception:
                     pass
@@ -531,7 +531,7 @@ if __name__ == '__main__':
                 "ave_alive": ave_alive,
                 "sampling_num": int(obs.shape[0]),
                 "duration": duration,
-            })
+            }, step=runner.global_step)
 
         ckpt_dir = './ckpt'
         os.makedirs(ckpt_dir, exist_ok=True)
