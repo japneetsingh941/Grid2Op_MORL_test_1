@@ -9,4 +9,4 @@ sbatch \
     --chdir="$DIR" \
     --output="$DIR/logs/%x_%j.out" \
     --error="$DIR/logs/%x_%j.err" \
-    master_run_orchestrator.SLURM
+    run_orchestrator_jap.SLURM
