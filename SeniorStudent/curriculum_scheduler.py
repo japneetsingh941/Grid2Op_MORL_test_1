@@ -1,4 +1,5 @@
 import copy
+import wandb
 
 _last_stage = None
 
@@ -19,6 +20,7 @@ def get_scheduled_weights(global_step, base_weights, curriculum_cfg):
         return weights
 
     stages = curriculum_cfg.get("stages", [])
+
     if _last_stage is None:
         print(f"[DEBUG] Curriculum stages: {stages}", flush=True)
 
@@ -36,20 +38,35 @@ def get_scheduled_weights(global_step, base_weights, curriculum_cfg):
         else:
             break
 
-    # Apply every scheduled weight
+    # Apply scheduled weights
     for key, value in current_stage.get("weights", {}).items():
         weights[key] = value
 
-    # Print only when the stage changes
+    # Only log when the stage changes
     if stage_index != _last_stage:
+
         print(
             f"[Scheduler] Stage {stage_index} at step {global_step}",
             flush=True
         )
+
         print(
             f"[Scheduler] Active weights: {current_stage['weights']}",
             flush=True
         )
+
+        # Log to W&B
+        if wandb.run is not None:
+            wandb.log(
+                {
+                    "curriculum/stage": stage_index,
+                    "curriculum/alpha_struct": weights.get("alpha_struct"),
+                    "curriculum/alpha_fair": weights.get("alpha_fair"),
+                    "curriculum/alpha_sust": weights.get("alpha_sust"),
+                },
+                step=global_step,
+            )
+
         _last_stage = stage_index
 
     return weights
