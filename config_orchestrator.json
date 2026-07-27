@@ -61,16 +61,16 @@
       "step": 400000,
       "weights": {
         "alpha_struct": 0.5,
-        "alpha_fair": 0.5,
-        "alpha_sust": 0.0
+        "alpha_fair": 0.0,
+        "alpha_sust": 0.5
       }
     },
     {
       "step": 800000,
       "weights": {
         "alpha_struct": 0.33,
-        "alpha_fair": 0.33,
-        "alpha_sust": 0.34
+        "alpha_fair": 0.34,
+        "alpha_sust": 0.33
       }
     }
   ]
