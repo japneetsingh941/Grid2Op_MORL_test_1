@@ -64,6 +64,11 @@ except ValueError:
     # Fallback if env var is corrupted or non-numeric
     start_time_global = time.time()
 
+# ---- SLURM job-array identity (unset when this script is run standalone) ----
+ARRAY_JOB_ID = os.environ.get("SLURM_ARRAY_JOB_ID")
+ARRAY_TASK_ID = os.environ.get("SLURM_ARRAY_TASK_ID")
+RUN_SUFFIX = f"_run{ARRAY_TASK_ID}" if ARRAY_TASK_ID is not None else ""
+
 class Run_env(object):
     def __init__(self, envs, agent, n_steps=2000, n_cores=12, gamma=0.99, lam=0.95, action_space_path='../', morl_params=None,
         morl_log_interval=1000,):
@@ -380,7 +385,7 @@ if __name__ == '__main__':
     )
     # --- wandb init (optional) ---
     if USE_WANDB:
-        run_name = f"senior_student_{time.strftime('%m-%d-%H-%M', time.localtime())}"
+        run_name = f"senior_student_{time.strftime('%m-%d-%H-%M', time.localtime())}{RUN_SUFFIX}"
 
         # Base training config
         base_config = {
@@ -407,6 +412,8 @@ if __name__ == '__main__':
         curriculum = runner.curriculum_cfg
 
         base_config["curriculum_enabled"] = curriculum.get("enabled", False)
+        base_config["slurm_array_job_id"] = ARRAY_JOB_ID
+        base_config["slurm_array_task_id"] = ARRAY_TASK_ID
 
         for i, stage in enumerate(curriculum.get("stages", [])):
 
@@ -435,6 +442,7 @@ if __name__ == '__main__':
         wandb.init(
             project="vt1_grid2op_senior_ppo",
             name=run_name,
+            group=ARRAY_JOB_ID,
             config=base_config,
         )
         repo_root = Path(PARENT)
@@ -443,7 +451,7 @@ if __name__ == '__main__':
 
 
     # Ensure log directory exists
-    log_dir = './log'
+    log_dir = f'./log{RUN_SUFFIX}'
     os.makedirs(log_dir, exist_ok=True)
     logfile = os.path.join(log_dir, 'log-%s.txt' % time.strftime('%m-%d-%H-%M', time.localtime()))
     with open(logfile, 'w') as f:
@@ -459,7 +467,7 @@ if __name__ == '__main__':
             print(" Saving final checkpoint before exit.", flush=True)
             print("=======================\n", flush=True)
 
-            ckpt_dir = './ckpt'
+            ckpt_dir = f'./ckpt{RUN_SUFFIX}'
             os.makedirs(ckpt_dir, exist_ok=True)
             final_ckpt = os.path.join(ckpt_dir, f'FINAL_{update}.keras')
             runner.agent.model.model.save(final_ckpt)
@@ -533,7 +541,7 @@ if __name__ == '__main__':
                 "duration": duration,
             }, step=runner.global_step)
 
-        ckpt_dir = './ckpt'
+        ckpt_dir = f'./ckpt{RUN_SUFFIX}'
         os.makedirs(ckpt_dir, exist_ok=True)
         # Keras 3 requires a proper extension
         ckpt_path = os.path.join(ckpt_dir, '%d-%.2f.keras' % (update, ave_r))

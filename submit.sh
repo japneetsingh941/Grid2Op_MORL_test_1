@@ -7,6 +7,6 @@ mkdir -p "$DIR/logs"
 sbatch \
     --export=ALL,BASE_DIR="$DIR" \
     --chdir="$DIR" \
-    --output="$DIR/logs/%x_%j.out" \
-    --error="$DIR/logs/%x_%j.err" \
+    --output="$DIR/logs/%x_%A_%a.out" \
+    --error="$DIR/logs/%x_%A_%a.err" \
     run_orchestrator_jap.SLURM

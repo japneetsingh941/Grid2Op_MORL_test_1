@@ -5,13 +5,19 @@
 #SBATCH --time=0-12:00:00
 #SBATCH --mem=128G
 #SBATCH --cpus-per-task=80
+#SBATCH --array=0-9
 #SBATCH --chdir=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1
-#SBATCH --output=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%j.out
-#SBATCH --error=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%j.err
+#SBATCH --output=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%A_%a.out
+#SBATCH --error=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%A_%a.err
 #SBATCH --open-mode=append
 
 set -euo pipefail
 set -x
+
+# ---------- Job / array identity ----------
+echo "[SLURM] SLURM_JOB_ID=${SLURM_JOB_ID:-N/A}"
+echo "[SLURM] SLURM_ARRAY_JOB_ID=${SLURM_ARRAY_JOB_ID:-N/A}"
+echo "[SLURM] SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID:-N/A}"
 
 # ---------- Paths ----------
 # ---------- Paths ----------
@@ -142,7 +148,7 @@ export WANDB_PROJECT="zhaw morl"
 export WANDB_ENTITY="japneet-singh-jal-university-of-toronto"
 export WANDB_MODE=online
 export WANDB_DIR="$LOG_DIR/wandb"
-export WANDB_NAME="ols_${SLURM_JOB_ID}"
+export WANDB_NAME="ols_${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}_task${SLURM_ARRAY_TASK_ID:-0}"
 export WANDB_TAGS="grid2op,PPO,NOMORL"
 # ---------- Run ----------
 cd "$PROJECT_DIR"
