@@ -68,8 +68,8 @@
     {
       "step": 800000,
       "weights": {
-        "alpha_struct": 0.33,
-        "alpha_fair": 0.34,
+        "alpha_struct": 0.34,
+        "alpha_fair": 0.33,
         "alpha_sust": 0.33
       }
     }
