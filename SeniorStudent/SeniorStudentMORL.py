@@ -419,6 +419,8 @@ if __name__ == '__main__':
                 base_config[f"curriculum/stage_{i}/{key}"] = value
         
 
+        repo_root = Path(PARENT)
+
         try:
             base_config["git_commit"] = subprocess.check_output(
                 ["git", "rev-parse", "--short", "HEAD"],
@@ -439,7 +441,6 @@ if __name__ == '__main__':
             name=run_name,
             config=base_config,
         )
-        repo_root = Path(PARENT)
         cfg_path = repo_root / "config_orchestrator.json"
         wandb.save(str(cfg_path))
 
@@ -468,10 +469,13 @@ if __name__ == '__main__':
 
             if USE_WANDB:
                 try:
+                    # Log on the same axis as every other wandb.log in this run
+                    # (env steps, not epochs) -- wandb requires step to be
+                    # monotonically increasing or it silently drops the data.
                     wandb.log({
                         "status": "graceful_exit_due_to_time_limit",
                         "epoch_finished": update,
-                    }, step=update)
+                    }, step=runner.global_step)
                     wandb.finish()
                 except Exception:
                     pass
