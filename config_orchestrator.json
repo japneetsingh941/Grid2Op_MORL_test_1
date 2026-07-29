@@ -76,7 +76,7 @@
         },
 
         {   "name": "Fairness",
-            "step": 500000,
+            "step": 400000,
             "weights": {
 
                 "w_fair_rho": 1.0,
@@ -101,7 +101,7 @@
         },
 
         {   "name": "Sustainability",
-            "step": 1000000,
+            "step": 800000,
             "weights": {
 
                 "w_fair_rho": 0.0,
