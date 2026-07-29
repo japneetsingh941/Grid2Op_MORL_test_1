@@ -108,7 +108,21 @@ def main():
     python_exe = cfg.get("general", {}).get("python_executable") or sys.executable
 
     paths = cfg.get("paths", {})
-    stages = cfg.get("stages", {})
+    stages = dict(cfg.get("stages", {}))
+
+    # ORCH_SKIP_STAGES lets a caller force stages off without editing the config.
+    # Used by the SLURM array: concurrent tasks share one working directory, so
+    # deploy_checkpoint (which wipes submission/ppo-ckpt) and run_runner (which
+    # reads it back) would race across tasks and evaluate the wrong checkpoint.
+    skip_stages = [
+        s.strip() for s in os.environ.get("ORCH_SKIP_STAGES", "").split(",") if s.strip()
+    ]
+    for name in skip_stages:
+        if name in stages:
+            print(f"[ORCH] Stage '{name}' disabled via ORCH_SKIP_STAGES.", flush=True)
+        else:
+            print(f"[ORCH] ORCH_SKIP_STAGES names unknown stage '{name}'.", flush=True)
+        stages[name] = False
 
     teacher_dir = repo_root / paths.get("teacher_dir", "Teacher")
     tutor_dir = repo_root / paths.get("tutor_dir", "Tutor")

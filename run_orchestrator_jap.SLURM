@@ -3,11 +3,17 @@
 #SBATCH --partition=cpu
 #SBATCH --account=cai_res
 #SBATCH --time=0-12:00:00
-#SBATCH --mem=128G
-#SBATCH --cpus-per-task=80
+# Training uses NUM_CORE = min(cpu_count(), 16) environments + the main process,
+# so ~17 CPUs are actually used. The old request of 80 CPUs / 128G meant only two
+# jobs fit per node (192 logical CPUs), which is why array tasks sat in PD with
+# reason (Resources) -- it was never a job-count policy cap.
+# Re-check --mem against `sacct -j <id> --format=MaxRSS` and set to ~1.5x actual.
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=20
+#SBATCH --array=0-9
 #SBATCH --chdir=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1
-#SBATCH --output=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%j.out
-#SBATCH --error=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%j.err
+#SBATCH --output=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%A_%a.out
+#SBATCH --error=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%A_%a.err
 #SBATCH --open-mode=append
 
 set -euo pipefail
@@ -25,9 +31,20 @@ PIP_CACHE="$BASE_DIR/.pip-cache"
 mkdir -p "$LOG_DIR" "$PIP_CACHE"
 
 # ---------- Threads ----------
-export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
-export MKL_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
+# Deliberately NOT SLURM_CPUS_PER_TASK: the 16 env workers are separate
+# processes, so giving each one that many BLAS threads oversubscribes the node
+# and makes concurrent runs fight each other.
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# ---------- Array identity ----------
+echo "[SLURM] SLURM_ARRAY_JOB_ID=${SLURM_ARRAY_JOB_ID:-N/A}"
+echo "[SLURM] SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID:-N/A}"
+
+# Concurrent array tasks share one working directory, so they must not all wipe
+# and repopulate submission/ppo-ckpt and then evaluate whatever won the race.
+export ORCH_SKIP_STAGES="deploy_checkpoint,run_runner"
 
 # ---------- Modules ----------
 module purge
@@ -132,7 +149,10 @@ export WANDB_PROJECT="grid2op"
 export WANDB_ENTITY="japneet-singh-can-university-of-toronto"
 export WANDB_MODE=online
 export WANDB_DIR="$LOG_DIR/wandb"
-export WANDB_NAME="ols_${SLURM_JOB_ID}"
+# One group per array submission: all 10 repeats land in the same group, so W&B
+# can plot mean +/- band across seeds via "Group by -> group".
+export WANDB_RUN_GROUP="sweep_${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}"
+export WANDB_NAME="ols_${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}_task${SLURM_ARRAY_TASK_ID:-0}"
 export WANDB_TAGS="grid2op,PPO,NOMORL"
 
 # ---------- Run ----------

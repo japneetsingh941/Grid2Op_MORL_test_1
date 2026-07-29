@@ -56,6 +56,13 @@ except ImportError:
 # ---- cluster time cap (shared with orchestrator via ORCH_START_TIME) ----
 MAX_RUNTIME_SECONDS = ((12)-0.5) * 3600  # 23h30
 
+# ---- array-task identity ----
+# Concurrent array tasks share one working directory, so every output path has to
+# carry the task id or the 10 repeats overwrite each other.
+ARRAY_TASK_ID = os.environ.get("SLURM_ARRAY_TASK_ID")
+RUN_SUFFIX = f"_run{ARRAY_TASK_ID}" if ARRAY_TASK_ID is not None else ""
+SEED = int(ARRAY_TASK_ID) if ARRAY_TASK_ID is not None else 0
+
 _orch_start = os.environ.get("ORCH_START_TIME")
 try:
     # If orchestrate_training started us, use its start time
@@ -352,6 +359,13 @@ if __name__ == '__main__':
     NUM_CORE = min(cpu_count(), max_envs)
     print('CPU counts (capped): %d' % NUM_CORE, flush=True)
 
+    # Seed from the array task id so the repeats differ from one another but each
+    # one can be re-run. Not bit-exact: the env workers are separate processes and
+    # TF is multi-threaded, so this is reproducible in distribution, not exactly.
+    print('Seed: %d (run suffix %r)' % (SEED, RUN_SUFFIX), flush=True)
+    np.random.seed(SEED)
+    tf.random.set_seed(SEED)
+
     # Build single-process environment
     try:
         # if lightsim2grid is available, use it.
@@ -360,6 +374,7 @@ if __name__ == '__main__':
         env = grid2op.make(dataset=DATA_PATH, chronics_path=SCENARIO_PATH, backend=backend, reward_class=PPO_Reward)
     except:
         env = grid2op.make(dataset=DATA_PATH, chronics_path=SCENARIO_PATH, reward_class=PPO_Reward)
+    env.seed(SEED)
     env.chronics_handler.shuffle(shuffler=lambda x: x[np.random.choice(len(x), size=len(x), replace=False)])
     # Convert to multi-process environment
     envs = SingleEnvMultiProcess(env=env, nb_env=NUM_CORE)
@@ -381,7 +396,9 @@ if __name__ == '__main__':
     )
     # --- wandb init (optional) ---
     if USE_WANDB:
-        run_name = f"senior_student_{time.strftime('%m-%d-%H-%M', time.localtime())}"
+        # Minute resolution alone is not unique: 10 array tasks start in the same
+        # minute, so the suffix is what keeps them apart in the W&B UI.
+        run_name = f"senior_student_{time.strftime('%m-%d-%H-%M', time.localtime())}{RUN_SUFFIX}"
 
         # Base training config
         base_config = {
@@ -447,7 +464,10 @@ if __name__ == '__main__':
     # Ensure log directory exists
     log_dir = './log'
     os.makedirs(log_dir, exist_ok=True)
-    logfile = os.path.join(log_dir, 'log-%s.txt' % time.strftime('%m-%d-%H-%M', time.localtime()))
+    logfile = os.path.join(
+        log_dir,
+        'log-%s%s.txt' % (time.strftime('%m-%d-%H-%M', time.localtime()), RUN_SUFFIX)
+    )
     with open(logfile, 'w') as f:
         f.writelines('epoch, ave_r, ave_alive, policy_loss, value_loss, entropy, kl, clipped_ratio, time\n')
 
@@ -461,7 +481,7 @@ if __name__ == '__main__':
             print(" Saving final checkpoint before exit.", flush=True)
             print("=======================\n", flush=True)
 
-            ckpt_dir = './ckpt'
+            ckpt_dir = f'./ckpt{RUN_SUFFIX}'
             os.makedirs(ckpt_dir, exist_ok=True)
             final_ckpt = os.path.join(ckpt_dir, f'FINAL_{update}.keras')
             runner.agent.model.model.save(final_ckpt)
@@ -538,7 +558,7 @@ if __name__ == '__main__':
                 "duration": duration,
             })
 
-        ckpt_dir = './ckpt'
+        ckpt_dir = f'./ckpt{RUN_SUFFIX}'
         os.makedirs(ckpt_dir, exist_ok=True)
         # Keras 3 requires a proper extension
         ckpt_path = os.path.join(ckpt_dir, '%d-%.2f.keras' % (update, ave_r))
