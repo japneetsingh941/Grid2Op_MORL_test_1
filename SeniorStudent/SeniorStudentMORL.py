@@ -161,6 +161,18 @@ class Run_env(object):
 
             # --- NEW: MORL metrics accumulation + scalar reward ---
             if self.morl_params is not None:
+                # Resolve once per env step, not once per environment: the
+                # result is identical for every idx, and this keeps the
+                # curriculum's wandb logging to a single call per step.
+                # Deliberately outside the try/except below -- a bad curriculum
+                # config must fail loudly instead of silently degrading every
+                # step to the raw env reward.
+                scheduled_weights = get_scheduled_weights(
+                    self.global_step,
+                    self.metrics_weights,
+                    self.curriculum_cfg
+                )
+
                 for idx in range(NUM_CORE):
                     try:
                         metrics = compute_morl_metrics(
@@ -175,19 +187,6 @@ class Run_env(object):
                         
 
                         # Build gated scalar reward from transformed metrics, using JSON-configured weights
-                        
-                        scheduled_weights = get_scheduled_weights(
-                            self.global_step,
-                            self.metrics_weights,
-                            self.curriculum_cfg
-                        )
-                        if self.global_step % 50000 == 0:
-                            print(
-                                f"[DEBUG] Scheduler sees global_step={self.global_step}",
-                                f"weights={scheduled_weights}",
-                                flush=True
-                            )
-                        
                         scalar_info = build_gated_scalar_reward(
                             metrics,
                             scheduled_weights
