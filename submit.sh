@@ -43,8 +43,13 @@ NUM_JOBS=$(( (NUM_PARALLEL_RUNS + RUNS_PER_JOB - 1) / RUNS_PER_JOB ))
 ARRAY_MAX=$(( NUM_JOBS - 1 ))
 CPUS_PER_JOB=$(( RUNS_PER_JOB * CPUS_PER_RUN ))
 
+# SUBMIT_ARRAY=1-1 ./submit.sh -> shift the array indices. RUN_INDEX is
+# array_task_id * runs_per_job + i, so this keeps a new submission's log/ckpt
+# dirs clear of runs already on disk (task 1 x 10 runs -> ckpt_run10..19).
+ARRAY_SPEC="${SUBMIT_ARRAY:-0-$ARRAY_MAX}"
+
 echo "[SUBMIT] total runs        : $NUM_PARALLEL_RUNS"
-echo "[SUBMIT] jobs              : $NUM_JOBS (array 0-$ARRAY_MAX)"
+echo "[SUBMIT] jobs              : $NUM_JOBS (array $ARRAY_SPEC)"
 echo "[SUBMIT] runs per job      : $RUNS_PER_JOB"
 echo "[SUBMIT] cpus per run      : $CPUS_PER_RUN"
 echo "[SUBMIT] total cpus per job: $CPUS_PER_JOB"
@@ -63,7 +68,7 @@ fi
 sbatch $TEST_ONLY \
     --export=ALL,BASE_DIR="$DIR" \
     --chdir="$DIR" \
-    --array=0-"$ARRAY_MAX" \
+    --array="$ARRAY_SPEC" \
     --ntasks="$RUNS_PER_JOB" \
     --cpus-per-task="$CPUS_PER_RUN" \
     --mem-per-cpu="$MEM_PER_CPU" \
