@@ -112,7 +112,9 @@ class Run_env(object):
         # --- config from repo root (same place as orchestrator) ---
         cfg = ORCH_CFG
         self.metrics_weights = cfg.get("morl", {})
-        self.curriculum_cfg = cfg.get("curriculum", {})
+        # In sweep mode the curriculum is synthesised from RUN_ALPHA_ORDER;
+        # otherwise it is the configured `curriculum` block.
+        self.curriculum_cfg = run_config.resolve_curriculum(cfg)
 
     def run_n_steps(self, n_steps=None):
         def swap_and_flatten(arr):
@@ -429,6 +431,10 @@ if __name__ == '__main__':
         base_config["slurm_array_task_id"] = ARRAY_TASK_ID
         base_config["wandb_group"] = wb["group"]
         base_config["run_index"] = RUN_INDEX
+        # Sweep identity: which alpha ordering this run trains (empty otherwise)
+        base_config["alpha_order"] = os.environ.get("RUN_ALPHA_ORDER", "")
+        base_config["sweep_group"] = os.environ.get("RUN_GROUP", "")
+        base_config["run_tag"] = os.environ.get("RUN_TAG", "")
         base_config["runs_per_job"] = ORCH_CFG.get("parallel", {}).get("runs_per_job")
         base_config["num_parallel_runs"] = ORCH_CFG.get("parallel", {}).get("num_parallel_runs")
         base_config["threads_per_env"] = ORCH_CFG.get("parallel", {}).get("threads_per_env")

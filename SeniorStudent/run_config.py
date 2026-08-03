@@ -4,6 +4,7 @@ config_orchestrator.json so they can be changed without touching the code.
 
 Used by the SeniorStudent MORL training scripts.
 """
+import importlib.util
 import json
 import os
 from multiprocessing import cpu_count
@@ -52,14 +53,56 @@ def allocated_cpus() -> int:
         return max(1, cpu_count())
 
 
+def load_sweep_config():
+    """
+    Load sweep_config.py from the repo root (same importlib pattern the training
+    script uses for morl_objectives.py).
+    """
+    path = repo_root() / "sweep_config.py"
+    spec = importlib.util.spec_from_file_location("sweep_config", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def resolve_curriculum(cfg: dict, verbose: bool = True) -> dict:
+    """
+    Curriculum for this run.
+
+    In sweep mode the orchestrator passes RUN_ALPHA_ORDER (e.g. "sust,fair,struct")
+    and the stages are synthesised from it, so all 6 permutations share one code
+    path and the JSON `curriculum` block stays untouched. Without that env var the
+    configured curriculum is used, exactly as before.
+    """
+    order_env = os.environ.get("RUN_ALPHA_ORDER")
+    if not order_env:
+        return cfg.get("curriculum", {})
+
+    sweep = load_sweep_config()
+    order = sweep.order_from_env(order_env)
+    curriculum = sweep.curriculum_from_order(order, sweep.stage_steps(cfg))
+    if verbose:
+        print(f"[RUN_CFG] alpha order: {' -> '.join(order)}", flush=True)
+        for i, stage in enumerate(curriculum["stages"]):
+            print(f"[RUN_CFG]   stage {i} @ step {stage['step']}: {stage['weights']}",
+                  flush=True)
+    return curriculum
+
+
 def resolve_run_index() -> str:
     """
     Identity of this training run, used for ./log*, ./ckpt* and the W&B run name.
 
-    RUN_INDEX is set by the orchestrator when several runs are packed into one
-    SLURM job (they all share one array task id and would otherwise collide).
-    Falls back to the array task id, then to "" for a plain standalone run.
+    RUN_TAG (sweep mode, e.g. "sus_fair_struc_r3") wins so dirs are readable and
+    can never collide across permutations. RUN_INDEX is set by the orchestrator
+    when several runs are packed into one SLURM job (they all share one array
+    task id and would otherwise collide). Falls back to the array task id, then
+    to "" for a plain standalone run.
     """
+    run_tag = os.environ.get("RUN_TAG")
+    if run_tag not in (None, ""):
+        return str(run_tag)
+
     run_index = os.environ.get("RUN_INDEX")
     if run_index not in (None, ""):
         return str(run_index)
@@ -113,9 +156,9 @@ def resolve_wandb_cfg(cfg: dict, run_suffix: str = "", timestamp: str = "") -> d
     """
     Resolve W&B project / group / run name / tags.
 
-    Precedence: config_orchestrator.json -> environment -> built-in default.
-    An empty or null `wandb.group` falls back to the SLURM array job id, so a
-    plain array submission still groups its tasks together.
+    Precedence: RUN_GROUP (sweep) -> config_orchestrator.json -> environment ->
+    built-in default. An empty or null `wandb.group` falls back to the SLURM
+    array job id, so a plain array submission still groups its tasks together.
     """
     w = cfg.get("wandb", {})
 
@@ -124,7 +167,10 @@ def resolve_wandb_cfg(cfg: dict, run_suffix: str = "", timestamp: str = "") -> d
     run_index = os.environ.get("RUN_INDEX")
 
     project = w.get("project") or os.environ.get("WANDB_PROJECT") or DEFAULT_PROJECT
-    group = w.get("group") or os.environ.get("WANDB_GROUP") or array_job_id or "local"
+    # RUN_GROUP is set per permutation in sweep mode and must win over the
+    # single group configured in JSON.
+    group = (os.environ.get("RUN_GROUP") or w.get("group")
+             or os.environ.get("WANDB_GROUP") or array_job_id or "local")
     prefix = w.get("run_name_prefix") or DEFAULT_RUN_NAME_PREFIX
 
     name = w.get("run_name")

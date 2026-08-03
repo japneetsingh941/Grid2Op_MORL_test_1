@@ -7,6 +7,8 @@ from pathlib import Path
 import math
 import time
 
+import sweep_config
+
 # Global safety limit for the whole pipeline (23h30)
 MAX_RUNTIME_SECONDS = ((12)-0.5) * 3600
 
@@ -68,21 +70,27 @@ def build_senior_run_specs(cfg, python_exe, script_path: Path, log_dir: Path,
     One spec per training run to launch inside this SLURM job.
 
     The cluster caps the number of concurrent *jobs* (MaxJobs), not CPUs, so
-    `parallel.runs_per_job` runs share a single job instead of taking a job slot
-    each. Each run gets:
-      - a globally unique RUN_INDEX (unique across array tasks too), which the
-        training script turns into its ./log*, ./ckpt* and W&B run name;
+    several runs share a single job instead of taking a job slot each. Each run
+    gets:
+      - its own identity (RUN_TAG in sweep mode, else a globally unique
+        RUN_INDEX), which the training script turns into its ./log*, ./ckpt*
+        and W&B run name;
       - its own log file, so the runs don't interleave into one SLURM log;
       - an `srun` step pinned to ONE node: a run's envs are local
         SingleEnvMultiProcess forks, so a run must never straddle nodes.
 
-    Returns a list of dicts: {run_index, cmd, env_overrides, log_path}.
-    Pure function (no side effects) so the index math and srun flags are testable.
+    Two modes:
+      - sweep (`sweep.enabled`): the array task id IS the permutation index, and
+        this job holds that permutation's `runs_per_permutation` runs, all
+        sharing one alpha ordering and one W&B group.
+      - plain: `parallel.runs_per_job` runs indexed from the array task id.
+
+    Returns a list of dicts: {run_index, tag, group, cmd, env_overrides, log_path}.
+    Pure function (no side effects) so the layout and srun flags are testable.
     """
     extra_args = list(extra_args or [])
     parallel_cfg = cfg.get("parallel", {})
 
-    runs_per_job = max(1, int(parallel_cfg.get("runs_per_job", 1) or 1))
     cpus_per_run = int(parallel_cfg.get("cpus_per_run", 0) or 0)
     mem_per_cpu = parallel_cfg.get("mem_per_cpu")
     in_slurm = job_id not in (None, "")
@@ -91,14 +99,20 @@ def build_senior_run_specs(cfg, python_exe, script_path: Path, log_dir: Path,
     srun_flags = list(parallel_cfg.get("srun_flags")
                       or ["--nodes=1", "--ntasks=1", "--exact"])
 
-    try:
-        task_offset = int(array_task_id) * runs_per_job
-    except (TypeError, ValueError):
-        task_offset = 0
+    if sweep_config.enabled(cfg):
+        runs = sweep_config.sweep_runs(cfg, array_task_id)
+    else:
+        runs_per_job = max(1, int(parallel_cfg.get("runs_per_job", 1) or 1))
+        try:
+            task_offset = int(array_task_id) * runs_per_job
+        except (TypeError, ValueError):
+            task_offset = 0
+        runs = [{"index": task_offset + i} for i in range(runs_per_job)]
 
     specs = []
-    for i in range(runs_per_job):
-        run_index = task_offset + i
+    for run in runs:
+        run_index = run["index"]
+        tag = run.get("tag")
 
         if use_srun:
             cmd = ["srun"] + srun_flags
@@ -111,6 +125,12 @@ def build_senior_run_specs(cfg, python_exe, script_path: Path, log_dir: Path,
             cmd = [python_exe, str(script_path)] + extra_args
 
         env_overrides = {"RUN_INDEX": str(run_index)}
+        if tag:
+            # Sweep run: tag drives log/ckpt dirs and the W&B run name, the
+            # order drives the curriculum, the group keeps the arm together.
+            env_overrides["RUN_TAG"] = tag
+            env_overrides["RUN_GROUP"] = run["group"]
+            env_overrides["RUN_ALPHA_ORDER"] = ",".join(run["order"])
         if in_slurm and cpus_per_run > 0:
             # Each run must see its own share, not the whole job allocation:
             # SLURM_CPUS_PER_TASK is what resolve_num_envs() clamps envs against.
@@ -119,9 +139,11 @@ def build_senior_run_specs(cfg, python_exe, script_path: Path, log_dir: Path,
 
         specs.append({
             "run_index": run_index,
+            "tag": tag,
+            "group": run.get("group"),
             "cmd": cmd,
             "env_overrides": env_overrides,
-            "log_path": log_dir / f"senior_run{run_index}.out",
+            "log_path": log_dir / f"senior_{tag or f'run{run_index}'}.out",
         })
 
     return specs
@@ -145,7 +167,8 @@ def launch_senior_runs(specs, cwd: Path, verbose=True):
 
         spec["log_path"].parent.mkdir(parents=True, exist_ok=True)
         logf = spec["log_path"].open("w")
-        log(f"Launching senior run {spec['run_index']}: {' '.join(spec['cmd'])} "
+        label = spec.get("tag") or f"run{spec['run_index']}"
+        log(f"Launching senior run {label}: {' '.join(spec['cmd'])} "
             f"(log={spec['log_path']})", verbose)
         p = subprocess.Popen(
             spec["cmd"], cwd=str(cwd), env=env,
@@ -157,15 +180,16 @@ def launch_senior_runs(specs, cwd: Path, verbose=True):
     for spec, p, logf in procs:
         ret = p.wait()
         logf.close()
+        label = spec.get("tag") or f"run{spec['run_index']}"
         if ret != 0:
-            failures.append((spec["run_index"], ret, spec["log_path"]))
-            log(f"[WARN] Senior run {spec['run_index']} exited with code {ret} "
+            failures.append((label, ret, spec["log_path"]))
+            log(f"[WARN] Senior run {label} exited with code {ret} "
                 f"(see {spec['log_path']})", verbose)
         else:
-            log(f"Senior run {spec['run_index']} finished OK", verbose)
+            log(f"Senior run {label} finished OK", verbose)
 
     if failures:
-        details = ", ".join(f"run{idx}=code{ret}" for idx, ret, _ in failures)
+        details = ", ".join(f"{label}=code{ret}" for label, ret, _ in failures)
         raise RuntimeError(f"{len(failures)}/{len(procs)} senior runs failed: {details}")
 
 
@@ -369,9 +393,10 @@ def main():
             script = senior_dir / "SeniorStudentMORL.py"
 
             runs_per_job = max(1, int(cfg.get("parallel", {}).get("runs_per_job", 1) or 1))
-            if runs_per_job > 1:
+            if sweep_config.enabled(cfg) or runs_per_job > 1:
                 # Pack several runs into this one job: the cluster limits the
-                # number of concurrent jobs, not CPUs.
+                # number of concurrent jobs, not CPUs. In sweep mode the array
+                # task id selects which alpha permutation this job trains.
                 specs = build_senior_run_specs(
                     cfg,
                     python_exe,
@@ -381,8 +406,15 @@ def main():
                     array_task_id=os.environ.get("SLURM_ARRAY_TASK_ID"),
                     job_id=os.environ.get("SLURM_JOB_ID"),
                 )
-                print(f"Stage 4: launching {len(specs)} senior runs in this job "
-                      f"(indices {specs[0]['run_index']}-{specs[-1]['run_index']})", flush=True)
+                if specs[0].get("tag"):
+                    order = specs[0]["env_overrides"]["RUN_ALPHA_ORDER"]
+                    print(f"Stage 4: launching {len(specs)} senior runs in this job "
+                          f"| alpha order: {order} | wandb group: {specs[0]['group']}",
+                          flush=True)
+                else:
+                    print(f"Stage 4: launching {len(specs)} senior runs in this job "
+                          f"(indices {specs[0]['run_index']}-{specs[-1]['run_index']})",
+                          flush=True)
                 launch_senior_runs(specs, senior_dir, verbose=verbose)
             else:
                 run_step(python_exe, script, senior_dir, extra_args=sr_args, verbose=verbose)

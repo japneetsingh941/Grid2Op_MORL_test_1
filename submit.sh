@@ -32,29 +32,71 @@ except Exception:
 PY
 }
 
+# Sweep mode: sweep_config.py is the single source of truth for the array size,
+# the runs per job and the per-permutation W&B group names.
+read_sweep() {
+    python3 - "$1" <<'PY'
+import sys
+sys.path.insert(0, ".")
+import sweep_config
+cfg = sweep_config.load_cfg()
+what = sys.argv[1]
+if what == "enabled":
+    print("1" if sweep_config.enabled(cfg) else "0")
+elif what == "permutations":
+    print(sweep_config.num_permutations(cfg))
+elif what == "runs_per_permutation":
+    print(sweep_config.runs_per_permutation(cfg))
+elif what == "total_runs":
+    print(sweep_config.total_runs(cfg))
+elif what == "groups":
+    for order in sweep_config.sweep_orders(cfg):
+        print(sweep_config.group_name(cfg, order))
+PY
+}
+
 NUM_PARALLEL_RUNS="$(read_parallel_cfg num_parallel_runs 10)"
 RUNS_PER_JOB="$(read_parallel_cfg runs_per_job 10)"
 CPUS_PER_RUN="$(read_parallel_cfg cpus_per_run 20)"
 MEM_PER_CPU="$(read_parallel_cfg mem_per_cpu 1500M)"
 
-# The association caps concurrent JOBS (MaxJobs=5), not CPUs, so pack
-# RUNS_PER_JOB training runs into each job and submit as few jobs as possible.
-NUM_JOBS=$(( (NUM_PARALLEL_RUNS + RUNS_PER_JOB - 1) / RUNS_PER_JOB ))
+SWEEP_ENABLED="$(read_sweep enabled)"
+
+if [ "$SWEEP_ENABLED" = "1" ]; then
+    # One array task per alpha permutation, each holding runs_per_permutation
+    # packed runs. 6 x 10 = 60 runs at 200 CPUs per job, instead of one
+    # 1200-CPU job that would never be scheduled.
+    NUM_JOBS="$(read_sweep permutations)"
+    RUNS_PER_JOB="$(read_sweep runs_per_permutation)"
+    TOTAL_RUNS="$(read_sweep total_runs)"
+else
+    # The association caps concurrent JOBS (MaxJobs=5), not CPUs, so pack
+    # RUNS_PER_JOB training runs into each job and submit as few jobs as possible.
+    NUM_JOBS=$(( (NUM_PARALLEL_RUNS + RUNS_PER_JOB - 1) / RUNS_PER_JOB ))
+    TOTAL_RUNS="$NUM_PARALLEL_RUNS"
+fi
+
 ARRAY_MAX=$(( NUM_JOBS - 1 ))
 CPUS_PER_JOB=$(( RUNS_PER_JOB * CPUS_PER_RUN ))
 
-# SUBMIT_ARRAY=1-1 ./submit.sh -> shift the array indices. RUN_INDEX is
-# array_task_id * runs_per_job + i, so this keeps a new submission's log/ckpt
-# dirs clear of runs already on disk (task 1 x 10 runs -> ckpt_run10..19).
+# SUBMIT_ARRAY=3-3 ./submit.sh -> submit a subset of the array. In sweep mode the
+# array index IS the permutation index, so this re-runs a single permutation; in
+# plain mode it shifts RUN_INDEX (array_task_id * runs_per_job + i) to keep new
+# log/ckpt dirs clear of runs already on disk.
 ARRAY_SPEC="${SUBMIT_ARRAY:-0-$ARRAY_MAX}"
 
-echo "[SUBMIT] total runs        : $NUM_PARALLEL_RUNS"
+echo "[SUBMIT] total runs        : $TOTAL_RUNS"
 echo "[SUBMIT] jobs              : $NUM_JOBS (array $ARRAY_SPEC)"
 echo "[SUBMIT] runs per job      : $RUNS_PER_JOB"
 echo "[SUBMIT] cpus per run      : $CPUS_PER_RUN"
 echo "[SUBMIT] total cpus per job: $CPUS_PER_JOB"
 echo "[SUBMIT] mem per cpu       : $MEM_PER_CPU"
-echo "[SUBMIT] wandb group       : $(read_wandb_group)"
+if [ "$SWEEP_ENABLED" = "1" ]; then
+    echo "[SUBMIT] sweep             : alpha-ordering permutations, one per array task"
+    read_sweep groups | nl -v0 -w1 -s': ' | sed 's/^/[SUBMIT]   task /'
+else
+    echo "[SUBMIT] wandb group       : $(read_wandb_group)"
+fi
 
 # SUBMIT_TEST_ONLY=1 ./submit.sh  -> validate the allocation without queueing.
 # Plain string (not an array): expanding an empty array trips `set -u` on bash 3.x.

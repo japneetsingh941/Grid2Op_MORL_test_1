@@ -12,6 +12,12 @@
     "threads_per_env": 1,
     "use_srun_steps": true
   },
+  "sweep": {
+    "enabled": true,
+    "group_prefix": "base_vector",
+    "runs_per_permutation": 10,
+    "stage_steps": [0, 400000, 800000]
+  },
   "wandb": {
     "enabled": true,
     "project": "vt1_grid2op_senior_ppo",
