@@ -3,6 +3,20 @@
     "python_executable": null,
     "verbose": true
   },
+  "parallel": {
+    "num_parallel_runs": 10,
+    "cpus_per_run": 20,
+    "mem_per_run": "32G",
+    "num_envs": 16,
+    "threads_per_env": 1
+  },
+  "wandb": {
+    "enabled": true,
+    "project": "vt1_grid2op_senior_ppo",
+    "group": "alpha_curriculum_10x",
+    "run_name_prefix": "senior_student",
+    "tags": ["grid2op", "PPO", "MORL", "curriculum"]
+  },
   "paths": {
     "teacher_dir": "Teacher",
     "tutor_dir": "Tutor",

@@ -3,8 +3,12 @@
 #SBATCH --partition=cpu
 #SBATCH --account=cai_res
 #SBATCH --time=0-12:00:00
-#SBATCH --mem=128G
-#SBATCH --cpus-per-task=80
+# NOTE: mem / cpus-per-task / array are overridden by submit.sh from the
+# "parallel" section of config_orchestrator.json. The values below are only the
+# defaults used when this script is sbatch'ed directly.
+# 20 CPUs = 16 grid2op envs + headroom for the main TF process.
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=20
 #SBATCH --array=0-9
 #SBATCH --chdir=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1
 #SBATCH --output=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%A_%a.out
@@ -31,8 +35,12 @@ PIP_CACHE="$BASE_DIR/.pip-cache"
 mkdir -p "$LOG_DIR" "$PIP_CACHE"
 
 # ---------- Threads ----------
-export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
-export MKL_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
+# Parallelism comes from the 16 multi-process grid2op envs, not from BLAS
+# threads, so keep each process single-threaded instead of letting every worker
+# grab all 20 cores. The training script re-applies parallel.threads_per_env.
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # ---------- Modules ----------
@@ -144,12 +152,12 @@ fi
 # export WANDB_TAGS="grid2op,PPO,NOMORL"
 
 export WANDB_API_KEY="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"
-export WANDB_PROJECT="zhaw morl"
 export WANDB_ENTITY="japneet-singh-jal-university-of-toronto"
 export WANDB_MODE=online
 export WANDB_DIR="$LOG_DIR/wandb"
-export WANDB_NAME="ols_${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}_task${SLURM_ARRAY_TASK_ID:-0}"
-export WANDB_TAGS="grid2op,PPO,NOMORL"
+# project / group / run name / tags live in config_orchestrator.json ("wandb"
+# section) so all array tasks land in the same named group. Do not export
+# WANDB_PROJECT / WANDB_NAME / WANDB_TAGS here — the config is authoritative.
 # ---------- Run ----------
 cd "$PROJECT_DIR"
 echo "[RUN] Start $(date)"

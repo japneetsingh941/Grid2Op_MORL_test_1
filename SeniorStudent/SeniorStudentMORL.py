@@ -11,9 +11,15 @@ author: chen binbin
 mail: cbb@cbb1996.com
 """
 from curriculum_scheduler import get_scheduled_weights
+import run_config
+
+# Run-level settings (parallelism + wandb naming) come from config_orchestrator.json.
+# Loaded before numpy/TF so the per-process thread caps are picked up on import.
+ORCH_CFG = run_config.load_orchestrator_cfg()
+run_config.apply_thread_limits(ORCH_CFG)
+
 import time
 import os
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -69,6 +75,10 @@ ARRAY_JOB_ID = os.environ.get("SLURM_ARRAY_JOB_ID")
 ARRAY_TASK_ID = os.environ.get("SLURM_ARRAY_TASK_ID")
 RUN_SUFFIX = f"_run{ARRAY_TASK_ID}" if ARRAY_TASK_ID is not None else ""
 
+# Allow disabling wandb straight from the config file
+if not ORCH_CFG.get("wandb", {}).get("enabled", True):
+    USE_WANDB = False
+
 class Run_env(object):
     def __init__(self, envs, agent, n_steps=2000, n_cores=12, gamma=0.99, lam=0.95, action_space_path='../', morl_params=None,
         morl_log_interval=1000,):
@@ -96,15 +106,8 @@ class Run_env(object):
         self.morl_log_interval = morl_log_interval
         self.morl_metrics_buffer = []  # list of per-step dicts
         self.morl_step_counter = 0
-        # --- load config from repo root (same place as orchestrator) ---
-        repo_root = Path(PARENT)  # PARENT is repo root defined at top of file
-        cfg_path = repo_root / "config_orchestrator.json"
-        if not cfg_path.exists():
-            raise FileNotFoundError(f"Config file not found: {cfg_path}")
-
-        with cfg_path.open("r", encoding="utf-8") as f:
-            cfg = json.load(f)
-
+        # --- config from repo root (same place as orchestrator) ---
+        cfg = ORCH_CFG
         self.metrics_weights = cfg.get("morl", {})
         self.curriculum_cfg = cfg.get("curriculum", {})
 
@@ -351,9 +354,10 @@ if __name__ == '__main__':
     SCENARIO_PATH = '../training_data_track1/chronics'
     EPOCHS = 1000
     NUM_ENV_STEPS_EACH_EPOCH = 20000 # larger is better
-    # Use a capped number of parallel environments to avoid hitting OS "open files" limits.
-    max_envs = 16  # you can tune this; 8 or 16 is usually safe
-    NUM_CORE = min(cpu_count(), max_envs)
+    # Parallel environments for this run: `parallel.num_envs` (16) from
+    # config_orchestrator.json, clamped to the CPUs this task actually got.
+    # cpu_count() would report the whole node, not our SLURM cgroup slice.
+    NUM_CORE = run_config.resolve_num_envs(ORCH_CFG)
     print('CPU counts (capped): %d' % NUM_CORE, flush=True)
 
     # Build single-process environment
@@ -385,7 +389,13 @@ if __name__ == '__main__':
     )
     # --- wandb init (optional) ---
     if USE_WANDB:
-        run_name = f"senior_student_{time.strftime('%m-%d-%H-%M', time.localtime())}{RUN_SUFFIX}"
+        # project / group / run name / tags all come from config_orchestrator.json
+        wb = run_config.resolve_wandb_cfg(
+            ORCH_CFG,
+            run_suffix=RUN_SUFFIX,
+            timestamp=time.strftime('%m-%d-%H-%M', time.localtime()),
+        )
+        run_name = wb["name"]
 
         # Base training config
         base_config = {
@@ -414,6 +424,9 @@ if __name__ == '__main__':
         base_config["curriculum_enabled"] = curriculum.get("enabled", False)
         base_config["slurm_array_job_id"] = ARRAY_JOB_ID
         base_config["slurm_array_task_id"] = ARRAY_TASK_ID
+        base_config["wandb_group"] = wb["group"]
+        base_config["num_parallel_runs"] = ORCH_CFG.get("parallel", {}).get("num_parallel_runs")
+        base_config["threads_per_env"] = ORCH_CFG.get("parallel", {}).get("threads_per_env")
 
         for i, stage in enumerate(curriculum.get("stages", [])):
 
@@ -423,6 +436,8 @@ if __name__ == '__main__':
 
                 base_config[f"curriculum/stage_{i}/{key}"] = value
         
+
+        repo_root = Path(PARENT)
 
         try:
             base_config["git_commit"] = subprocess.check_output(
@@ -438,14 +453,16 @@ if __name__ == '__main__':
         except Exception:
             pass
 
-                       
+        print(f"[WANDB] project={wb['project']} group={wb['group']} name={run_name}", flush=True)
         wandb.init(
-            project="vt1_grid2op_senior_ppo",
+            project=wb["project"],
+            entity=wb["entity"],
             name=run_name,
-            group=ARRAY_JOB_ID,
+            group=wb["group"],
+            job_type=wb["job_type"],
+            tags=wb["tags"],
             config=base_config,
         )
-        repo_root = Path(PARENT)
         cfg_path = repo_root / "config_orchestrator.json"
         wandb.save(str(cfg_path))
 
