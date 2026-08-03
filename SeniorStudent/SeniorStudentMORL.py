@@ -60,6 +60,8 @@ MAX_RUNTIME_SECONDS = ((12)-0.5) * 3600  # 23h30
 # Concurrent array tasks share one working directory, so every output path has to
 # carry the task id or the 10 repeats overwrite each other.
 ARRAY_TASK_ID = os.environ.get("SLURM_ARRAY_TASK_ID")
+ARRAY_JOB_ID = os.environ.get("SLURM_ARRAY_JOB_ID")
+WANDB_RUN_GROUP = os.environ.get("WANDB_RUN_GROUP")
 RUN_SUFFIX = f"_run{ARRAY_TASK_ID}" if ARRAY_TASK_ID is not None else ""
 SEED = int(ARRAY_TASK_ID) if ARRAY_TASK_ID is not None else 0
 
@@ -455,6 +457,7 @@ if __name__ == '__main__':
         wandb.init(
             project="vt1_grid2op_senior_ppo",
             name=run_name,
+            group=WANDB_RUN_GROUP or ARRAY_JOB_ID,
             config=base_config,
         )
         cfg_path = repo_root / "config_orchestrator.json"

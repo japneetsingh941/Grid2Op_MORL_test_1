@@ -151,7 +151,8 @@ export WANDB_MODE=online
 export WANDB_DIR="$LOG_DIR/wandb"
 # One group per array submission: all 10 repeats land in the same group, so W&B
 # can plot mean +/- band across seeds via "Group by -> group".
-export WANDB_RUN_GROUP="sweep_${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}"
+# Set a descriptive group name for this curriculum experiment run
+export WANDB_RUN_GROUP="curriculum_alpha_struct_fair_sust"
 export WANDB_NAME="ols_${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}_task${SLURM_ARRAY_TASK_ID:-0}"
 export WANDB_TAGS="grid2op,PPO,NOMORL"
 
