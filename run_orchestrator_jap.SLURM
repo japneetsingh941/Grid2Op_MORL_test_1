@@ -30,8 +30,11 @@ echo "[SLURM] SLURM_ARRAY_JOB_ID=${SLURM_ARRAY_JOB_ID:-N/A}"
 echo "[SLURM] SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID:-N/A}"
 
 # ---------- Paths ----------
-# ---------- Paths ----------
-BASE_DIR="/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1"
+# submit.sh exports BASE_DIR="<dir of submit.sh>"; honour it so the job runs the
+# checkout it was submitted from (a second clone tests its own code, not this
+# path). Hardcoded value stays as the fallback for a bare `sbatch` of this file.
+BASE_DIR="${BASE_DIR:-/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1}"
+echo "[PATHS] BASE_DIR=$BASE_DIR"
 
 PROJECT_DIR="$BASE_DIR"
 LOG_DIR="$BASE_DIR/logs"
