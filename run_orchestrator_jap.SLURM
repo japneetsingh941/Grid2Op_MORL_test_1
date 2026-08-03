@@ -3,13 +3,19 @@
 #SBATCH --partition=cpu
 #SBATCH --account=cai_res
 #SBATCH --time=0-12:00:00
-# NOTE: mem / cpus-per-task / array are overridden by submit.sh from the
-# "parallel" section of config_orchestrator.json. The values below are only the
-# defaults used when this script is sbatch'ed directly.
-# 20 CPUs = 16 grid2op envs + headroom for the main TF process.
-#SBATCH --mem=32G
+# NOTE: array / ntasks / cpus-per-task / mem-per-cpu are overridden by submit.sh
+# from the "parallel" section of config_orchestrator.json. The values below are
+# only the defaults used when this script is sbatch'ed directly.
+#
+# The association caps concurrent JOBS (MaxJobs=5), not CPUs, so all 10 runs are
+# packed into ONE job: 10 tasks x 20 CPUs (16 grid2op envs + headroom for the
+# main TF process), which SLURM may spread over several nodes. Use --mem-per-cpu
+# rather than --mem: with multi-node tasks --mem means "per node", and sbatch
+# rejects both together.
+#SBATCH --ntasks=10
 #SBATCH --cpus-per-task=20
-#SBATCH --array=0-9
+#SBATCH --mem-per-cpu=1500M
+#SBATCH --array=0-0
 #SBATCH --chdir=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1
 #SBATCH --output=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%A_%a.out
 #SBATCH --error=/cluster/home/singhjap/Projects/Grid2Op_MORL_test_1/logs/%x_%A_%a.err
@@ -33,6 +39,11 @@ VENV_DIR="$BASE_DIR/.venvs/morl_env_py311"
 PIP_CACHE="$BASE_DIR/.pip-cache"
 
 mkdir -p "$LOG_DIR" "$PIP_CACHE"
+
+# ---------- Open-file limit ----------
+# Packed runs x 16 grid2op env subprocesses each open a lot of descriptors.
+ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
+echo "[LIMITS] open files (soft/hard): $(ulimit -Sn)/$(ulimit -Hn)"
 
 # ---------- Threads ----------
 # Parallelism comes from the 16 multi-process grid2op envs, not from BLAS

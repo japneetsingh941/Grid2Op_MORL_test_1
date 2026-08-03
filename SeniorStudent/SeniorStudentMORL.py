@@ -73,7 +73,10 @@ except ValueError:
 # ---- SLURM job-array identity (unset when this script is run standalone) ----
 ARRAY_JOB_ID = os.environ.get("SLURM_ARRAY_JOB_ID")
 ARRAY_TASK_ID = os.environ.get("SLURM_ARRAY_TASK_ID")
-RUN_SUFFIX = f"_run{ARRAY_TASK_ID}" if ARRAY_TASK_ID is not None else ""
+# RUN_INDEX (set by the orchestrator when several runs share one job) takes
+# precedence over the array task id, so packed runs get their own log/ckpt dirs.
+RUN_INDEX = run_config.resolve_run_index()
+RUN_SUFFIX = f"_run{RUN_INDEX}" if RUN_INDEX else ""
 
 # Allow disabling wandb straight from the config file
 if not ORCH_CFG.get("wandb", {}).get("enabled", True):
@@ -425,6 +428,8 @@ if __name__ == '__main__':
         base_config["slurm_array_job_id"] = ARRAY_JOB_ID
         base_config["slurm_array_task_id"] = ARRAY_TASK_ID
         base_config["wandb_group"] = wb["group"]
+        base_config["run_index"] = RUN_INDEX
+        base_config["runs_per_job"] = ORCH_CFG.get("parallel", {}).get("runs_per_job")
         base_config["num_parallel_runs"] = ORCH_CFG.get("parallel", {}).get("num_parallel_runs")
         base_config["threads_per_env"] = ORCH_CFG.get("parallel", {}).get("threads_per_env")
 

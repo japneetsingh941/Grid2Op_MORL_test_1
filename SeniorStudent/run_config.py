@@ -52,6 +52,25 @@ def allocated_cpus() -> int:
         return max(1, cpu_count())
 
 
+def resolve_run_index() -> str:
+    """
+    Identity of this training run, used for ./log*, ./ckpt* and the W&B run name.
+
+    RUN_INDEX is set by the orchestrator when several runs are packed into one
+    SLURM job (they all share one array task id and would otherwise collide).
+    Falls back to the array task id, then to "" for a plain standalone run.
+    """
+    run_index = os.environ.get("RUN_INDEX")
+    if run_index not in (None, ""):
+        return str(run_index)
+
+    array_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+    if array_task_id not in (None, ""):
+        return str(array_task_id)
+
+    return ""
+
+
 def resolve_num_envs(cfg: dict, verbose: bool = True) -> int:
     """
     Number of parallel grid2op environments for this run, from
@@ -102,6 +121,7 @@ def resolve_wandb_cfg(cfg: dict, run_suffix: str = "", timestamp: str = "") -> d
 
     array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
     array_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+    run_index = os.environ.get("RUN_INDEX")
 
     project = w.get("project") or os.environ.get("WANDB_PROJECT") or DEFAULT_PROJECT
     group = w.get("group") or os.environ.get("WANDB_GROUP") or array_job_id or "local"
@@ -119,6 +139,8 @@ def resolve_wandb_cfg(cfg: dict, run_suffix: str = "", timestamp: str = "") -> d
     tags = [str(t) for t in (w.get("tags") or [])]
     if array_task_id is not None:
         tags.append(f"task{array_task_id}")
+    if run_index not in (None, ""):
+        tags.append(f"run{run_index}")
 
     return {
         "enabled": bool(w.get("enabled", True)),

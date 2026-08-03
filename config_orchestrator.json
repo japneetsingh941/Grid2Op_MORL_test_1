@@ -5,10 +5,12 @@
   },
   "parallel": {
     "num_parallel_runs": 10,
+    "runs_per_job": 10,
     "cpus_per_run": 20,
-    "mem_per_run": "32G",
+    "mem_per_cpu": "1500M",
     "num_envs": 16,
-    "threads_per_env": 1
+    "threads_per_env": 1,
+    "use_srun_steps": true
   },
   "wandb": {
     "enabled": true,

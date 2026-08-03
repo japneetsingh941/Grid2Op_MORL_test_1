@@ -62,6 +62,113 @@ def run_step(python_exe, script_path: Path, cwd: Path, extra_args=None, verbose=
     subprocess.run(cmd, cwd=str(cwd), check=True)
 
 
+def build_senior_run_specs(cfg, python_exe, script_path: Path, log_dir: Path,
+                           extra_args=None, array_task_id=None, job_id=None):
+    """
+    One spec per training run to launch inside this SLURM job.
+
+    The cluster caps the number of concurrent *jobs* (MaxJobs), not CPUs, so
+    `parallel.runs_per_job` runs share a single job instead of taking a job slot
+    each. Each run gets:
+      - a globally unique RUN_INDEX (unique across array tasks too), which the
+        training script turns into its ./log*, ./ckpt* and W&B run name;
+      - its own log file, so the runs don't interleave into one SLURM log;
+      - an `srun` step pinned to ONE node: a run's envs are local
+        SingleEnvMultiProcess forks, so a run must never straddle nodes.
+
+    Returns a list of dicts: {run_index, cmd, env_overrides, log_path}.
+    Pure function (no side effects) so the index math and srun flags are testable.
+    """
+    extra_args = list(extra_args or [])
+    parallel_cfg = cfg.get("parallel", {})
+
+    runs_per_job = max(1, int(parallel_cfg.get("runs_per_job", 1) or 1))
+    cpus_per_run = int(parallel_cfg.get("cpus_per_run", 0) or 0)
+    mem_per_cpu = parallel_cfg.get("mem_per_cpu")
+    in_slurm = job_id not in (None, "")
+    use_srun = bool(parallel_cfg.get("use_srun_steps", False)) and in_slurm
+    # --exact needs Slurm >= 20.11; override via config if srun rejects a flag.
+    srun_flags = list(parallel_cfg.get("srun_flags")
+                      or ["--nodes=1", "--ntasks=1", "--exact"])
+
+    try:
+        task_offset = int(array_task_id) * runs_per_job
+    except (TypeError, ValueError):
+        task_offset = 0
+
+    specs = []
+    for i in range(runs_per_job):
+        run_index = task_offset + i
+
+        if use_srun:
+            cmd = ["srun"] + srun_flags
+            if cpus_per_run > 0:
+                cmd.append(f"--cpus-per-task={cpus_per_run}")
+            if mem_per_cpu:
+                cmd.append(f"--mem-per-cpu={mem_per_cpu}")
+            cmd += [python_exe, str(script_path)] + extra_args
+        else:
+            cmd = [python_exe, str(script_path)] + extra_args
+
+        env_overrides = {"RUN_INDEX": str(run_index)}
+        if in_slurm and cpus_per_run > 0:
+            # Each run must see its own share, not the whole job allocation:
+            # SLURM_CPUS_PER_TASK is what resolve_num_envs() clamps envs against.
+            # Only set inside a real job — never fake SLURM vars off-cluster.
+            env_overrides["SLURM_CPUS_PER_TASK"] = str(cpus_per_run)
+
+        specs.append({
+            "run_index": run_index,
+            "cmd": cmd,
+            "env_overrides": env_overrides,
+            "log_path": log_dir / f"senior_run{run_index}.out",
+        })
+
+    return specs
+
+
+def launch_senior_runs(specs, cwd: Path, verbose=True):
+    """
+    Start every spec concurrently and wait for all of them.
+
+    Same launch/wait pattern as the Teacher split stages above: collect the
+    processes, wait on each, and fail loudly if any exited non-zero.
+    """
+    procs = []
+    for spec in specs:
+        env = os.environ.copy()
+        for key, value in spec["env_overrides"].items():
+            if value is None:
+                env.pop(key, None)
+            else:
+                env[key] = value
+
+        spec["log_path"].parent.mkdir(parents=True, exist_ok=True)
+        logf = spec["log_path"].open("w")
+        log(f"Launching senior run {spec['run_index']}: {' '.join(spec['cmd'])} "
+            f"(log={spec['log_path']})", verbose)
+        p = subprocess.Popen(
+            spec["cmd"], cwd=str(cwd), env=env,
+            stdout=logf, stderr=subprocess.STDOUT,
+        )
+        procs.append((spec, p, logf))
+
+    failures = []
+    for spec, p, logf in procs:
+        ret = p.wait()
+        logf.close()
+        if ret != 0:
+            failures.append((spec["run_index"], ret, spec["log_path"]))
+            log(f"[WARN] Senior run {spec['run_index']} exited with code {ret} "
+                f"(see {spec['log_path']})", verbose)
+        else:
+            log(f"Senior run {spec['run_index']} finished OK", verbose)
+
+    if failures:
+        details = ", ".join(f"run{idx}=code{ret}" for idx, ret, _ in failures)
+        raise RuntimeError(f"{len(failures)}/{len(procs)} senior runs failed: {details}")
+
+
 def copy_tree(src: Path, dst: Path, wipe: bool, verbose=True):
     if not src.exists():
         log(f"[WARN] Source checkpoint directory does not exist: {src}", verbose)
@@ -260,7 +367,25 @@ def main():
         elif stages.get("gated_tiered_morl", False):
             print(f"Stage 4: senior_train_gated_tiered_morl", flush=True)
             script = senior_dir / "SeniorStudentMORL.py"
-            run_step(python_exe, script, senior_dir, extra_args=sr_args, verbose=verbose)
+
+            runs_per_job = max(1, int(cfg.get("parallel", {}).get("runs_per_job", 1) or 1))
+            if runs_per_job > 1:
+                # Pack several runs into this one job: the cluster limits the
+                # number of concurrent jobs, not CPUs.
+                specs = build_senior_run_specs(
+                    cfg,
+                    python_exe,
+                    script,
+                    log_dir=repo_root / "logs",
+                    extra_args=sr_args,
+                    array_task_id=os.environ.get("SLURM_ARRAY_TASK_ID"),
+                    job_id=os.environ.get("SLURM_JOB_ID"),
+                )
+                print(f"Stage 4: launching {len(specs)} senior runs in this job "
+                      f"(indices {specs[0]['run_index']}-{specs[-1]['run_index']})", flush=True)
+                launch_senior_runs(specs, senior_dir, verbose=verbose)
+            else:
+                run_step(python_exe, script, senior_dir, extra_args=sr_args, verbose=verbose)
         elif stages.get("do_nothing", False):
             print(f"Stage 4: senior_do_nothing", flush=True)
             script = senior_dir / "SeniorStudent_DoNothingBaseline.py"

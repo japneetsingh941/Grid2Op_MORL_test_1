@@ -33,21 +33,40 @@ PY
 }
 
 NUM_PARALLEL_RUNS="$(read_parallel_cfg num_parallel_runs 10)"
+RUNS_PER_JOB="$(read_parallel_cfg runs_per_job 10)"
 CPUS_PER_RUN="$(read_parallel_cfg cpus_per_run 20)"
-MEM_PER_RUN="$(read_parallel_cfg mem_per_run 32G)"
-ARRAY_MAX=$((NUM_PARALLEL_RUNS - 1))
+MEM_PER_CPU="$(read_parallel_cfg mem_per_cpu 1500M)"
 
-echo "[SUBMIT] parallel runs : $NUM_PARALLEL_RUNS (array 0-$ARRAY_MAX)"
-echo "[SUBMIT] cpus per run  : $CPUS_PER_RUN"
-echo "[SUBMIT] mem per run   : $MEM_PER_RUN"
-echo "[SUBMIT] wandb group   : $(read_wandb_group)"
+# The association caps concurrent JOBS (MaxJobs=5), not CPUs, so pack
+# RUNS_PER_JOB training runs into each job and submit as few jobs as possible.
+NUM_JOBS=$(( (NUM_PARALLEL_RUNS + RUNS_PER_JOB - 1) / RUNS_PER_JOB ))
+ARRAY_MAX=$(( NUM_JOBS - 1 ))
+CPUS_PER_JOB=$(( RUNS_PER_JOB * CPUS_PER_RUN ))
 
-sbatch \
+echo "[SUBMIT] total runs        : $NUM_PARALLEL_RUNS"
+echo "[SUBMIT] jobs              : $NUM_JOBS (array 0-$ARRAY_MAX)"
+echo "[SUBMIT] runs per job      : $RUNS_PER_JOB"
+echo "[SUBMIT] cpus per run      : $CPUS_PER_RUN"
+echo "[SUBMIT] total cpus per job: $CPUS_PER_JOB"
+echo "[SUBMIT] mem per cpu       : $MEM_PER_CPU"
+echo "[SUBMIT] wandb group       : $(read_wandb_group)"
+
+# SUBMIT_TEST_ONLY=1 ./submit.sh  -> validate the allocation without queueing.
+# Plain string (not an array): expanding an empty array trips `set -u` on bash 3.x.
+TEST_ONLY=""
+if [ "${SUBMIT_TEST_ONLY:-0}" != "0" ]; then
+    echo "[SUBMIT] --test-only (nothing will be queued)"
+    TEST_ONLY="--test-only"
+fi
+
+# shellcheck disable=SC2086  # intentional: empty TEST_ONLY must expand to nothing
+sbatch $TEST_ONLY \
     --export=ALL,BASE_DIR="$DIR" \
     --chdir="$DIR" \
     --array=0-"$ARRAY_MAX" \
+    --ntasks="$RUNS_PER_JOB" \
     --cpus-per-task="$CPUS_PER_RUN" \
-    --mem="$MEM_PER_RUN" \
+    --mem-per-cpu="$MEM_PER_CPU" \
     --output="$DIR/logs/%x_%A_%a.out" \
     --error="$DIR/logs/%x_%A_%a.err" \
     run_orchestrator_jap.SLURM
