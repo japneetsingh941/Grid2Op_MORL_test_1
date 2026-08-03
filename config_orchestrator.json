@@ -5,7 +5,7 @@
   },
   "parallel": {
     "num_parallel_runs": 10,
-    "runs_per_job": 10,
+    "runs_per_job": 5,
     "cpus_per_run": 20,
     "mem_per_cpu": "1500M",
     "num_envs": 16,

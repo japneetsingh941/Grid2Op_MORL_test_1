@@ -47,6 +47,12 @@ elif what == "permutations":
     print(sweep_config.num_permutations(cfg))
 elif what == "runs_per_permutation":
     print(sweep_config.runs_per_permutation(cfg))
+elif what == "array_tasks":
+    print(sweep_config.num_array_tasks(cfg))
+elif what == "runs_per_job":
+    print(sweep_config.runs_per_job(cfg))
+elif what == "chunks":
+    print(sweep_config.chunks_per_permutation(cfg))
 elif what == "total_runs":
     print(sweep_config.total_runs(cfg))
 elif what == "groups":
@@ -63,12 +69,15 @@ MEM_PER_CPU="$(read_parallel_cfg mem_per_cpu 1500M)"
 SWEEP_ENABLED="$(read_sweep enabled)"
 
 if [ "$SWEEP_ENABLED" = "1" ]; then
-    # One array task per alpha permutation, each holding runs_per_permutation
-    # packed runs. 6 x 10 = 60 runs at 200 CPUs per job, instead of one
-    # 1200-CPU job that would never be scheduled.
-    NUM_JOBS="$(read_sweep permutations)"
-    RUNS_PER_JOB="$(read_sweep runs_per_permutation)"
+    # Each permutation's runs are split into chunks of runs_per_job, one array
+    # task per chunk. Job size (runs_per_job x cpus_per_run) is what has to fit
+    # the partition's idle CPUs; runs per permutation stays whatever the
+    # experiment needs.
+    NUM_JOBS="$(read_sweep array_tasks)"
+    RUNS_PER_JOB="$(read_sweep runs_per_job)"
     TOTAL_RUNS="$(read_sweep total_runs)"
+    CHUNKS="$(read_sweep chunks)"
+    RUNS_PER_PERM="$(read_sweep runs_per_permutation)"
 else
     # The association caps concurrent JOBS (MaxJobs=5), not CPUs, so pack
     # RUNS_PER_JOB training runs into each job and submit as few jobs as possible.
@@ -92,8 +101,9 @@ echo "[SUBMIT] cpus per run      : $CPUS_PER_RUN"
 echo "[SUBMIT] total cpus per job: $CPUS_PER_JOB"
 echo "[SUBMIT] mem per cpu       : $MEM_PER_CPU"
 if [ "$SWEEP_ENABLED" = "1" ]; then
-    echo "[SUBMIT] sweep             : alpha-ordering permutations, one per array task"
-    read_sweep groups | nl -v0 -w1 -s': ' | sed 's/^/[SUBMIT]   task /'
+    echo "[SUBMIT] sweep             : alpha-ordering permutations"
+    echo "[SUBMIT] runs per perm     : $RUNS_PER_PERM (split into $CHUNKS chunk(s) of $RUNS_PER_JOB)"
+    read_sweep groups | nl -v0 -w1 -s': ' | sed 's/^/[SUBMIT]   perm /'
 else
     echo "[SUBMIT] wandb group       : $(read_wandb_group)"
 fi

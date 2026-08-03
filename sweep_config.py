@@ -1,8 +1,10 @@
 """
 Alpha-ordering sweep: every permutation of the MORL objectives, repeated N times.
 
-Each permutation is one SLURM array task holding `runs_per_permutation` packed
-runs, and gets its own W&B group (e.g. base_vector_sus_fair_struc).
+Each permutation gets its own W&B group (e.g. base_vector_sus_fair_struc) and its
+runs are spread over one or more SLURM array tasks: an array task holds
+`parallel.runs_per_job` runs, so the job's CPU footprint can be made small enough
+to schedule without changing what any single run gets.
 
 Single source of truth for the sweep layout: imported by orchestrate_training.py
 (to build the run specs), by submit.sh (to size --array / --ntasks) and by
@@ -81,6 +83,29 @@ def total_runs(cfg: dict) -> int:
     return num_permutations(cfg) * runs_per_permutation(cfg)
 
 
+def runs_per_job(cfg: dict) -> int:
+    """
+    How many runs one SLURM job holds, i.e. `parallel.runs_per_job` capped at
+    runs_per_permutation.
+
+    Decoupled from runs_per_permutation on purpose: the job's CPU footprint is
+    runs_per_job * cpus_per_run, and a partition with only N idle CPUs cannot
+    start a job bigger than that no matter how many job slots are free. Smaller
+    jobs fit in gaps; the experiment each run sees is unchanged.
+    """
+    value = cfg.get("parallel", {}).get("runs_per_job") or runs_per_permutation(cfg)
+    return max(1, min(int(value), runs_per_permutation(cfg)))
+
+
+def chunks_per_permutation(cfg: dict) -> int:
+    per_job = runs_per_job(cfg)
+    return (runs_per_permutation(cfg) + per_job - 1) // per_job
+
+
+def num_array_tasks(cfg: dict) -> int:
+    return num_permutations(cfg) * chunks_per_permutation(cfg)
+
+
 def order_slug(cfg: dict, order) -> str:
     short = abbrev(cfg)
     return "_".join(short.get(obj, obj) for obj in order)
@@ -96,30 +121,42 @@ def run_tag(cfg: dict, order, repeat: int) -> str:
     return f"{order_slug(cfg, order)}_r{repeat}"
 
 
-def sweep_runs(cfg: dict, permutation_index) -> list:
+def sweep_runs(cfg: dict, task_index) -> list:
     """
-    The runs belonging to ONE array task (= one permutation).
+    The runs belonging to ONE array task.
 
-    Returns [{order, group, tag, repeat, index}, ...] of length
-    runs_per_permutation. `index` is the run's global position across the sweep,
-    kept only for logging/traceability - isolation uses `tag`.
+    An array task is (permutation, chunk): each permutation's runs_per_permutation
+    runs are split into chunks of runs_per_job, so several smaller jobs cover one
+    permutation. The group is per permutation regardless of chunking, and `tag`
+    uses the GLOBAL repeat number, so r0..r9 stay unique across chunks.
+
+    Returns [{order, group, tag, repeat, index}, ...] of length <= runs_per_job
+    (the last chunk is short when the split is uneven).
     """
     orders = sweep_orders(cfg)
+    chunks = chunks_per_permutation(cfg)
+    per_job = runs_per_job(cfg)
+    per_perm = runs_per_permutation(cfg)
+    tasks = len(orders) * chunks
 
     try:
-        perm_index = int(permutation_index)
+        index = int(task_index)
     except (TypeError, ValueError):
-        perm_index = 0
+        index = 0
 
-    if not 0 <= perm_index < len(orders):
+    if not 0 <= index < tasks:
         raise ValueError(
-            f"Permutation index {perm_index} out of range: the sweep defines "
-            f"{len(orders)} permutations (valid array indices 0-{len(orders) - 1})"
+            f"Array task index {index} out of range: the sweep defines "
+            f"{len(orders)} permutations x {chunks} chunk(s) = {tasks} array "
+            f"tasks (valid indices 0-{tasks - 1})"
         )
 
+    perm_index, chunk_index = divmod(index, chunks)
     order = orders[perm_index]
-    per_perm = runs_per_permutation(cfg)
     group = group_name(cfg, order)
+
+    first = chunk_index * per_job
+    last = min(first + per_job, per_perm)
 
     return [
         {
@@ -129,7 +166,7 @@ def sweep_runs(cfg: dict, permutation_index) -> list:
             "repeat": repeat,
             "index": perm_index * per_perm + repeat,
         }
-        for repeat in range(per_perm)
+        for repeat in range(first, last)
     ]
 
 
