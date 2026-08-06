@@ -45,8 +45,11 @@ def get_scheduled_weights(global_step, base_weights, curriculum_cfg):
     # Only log when the stage changes
     if stage_index != _last_stage:
 
+        stage_name = current_stage.get("name", "")
+
         print(
-            f"[Scheduler] Stage {stage_index} at step {global_step}",
+            f"[Scheduler] Stage {stage_index}"
+            f"{f' ({stage_name})' if stage_name else ''} at step {global_step}",
             flush=True
         )
 
@@ -55,17 +58,20 @@ def get_scheduled_weights(global_step, base_weights, curriculum_cfg):
             flush=True
         )
 
-        # Log to W&B
+        # Log to W&B. A stage is a whole config (alphas + tau + every metric
+        # weight), so log all of it - otherwise the charts show the alphas
+        # switching while the metric weights that changed with them are invisible.
         if wandb.run is not None:
-            wandb.log(
-                {
-                    "curriculum/stage": stage_index,
-                    "curriculum/alpha_struct": weights.get("alpha_struct"),
-                    "curriculum/alpha_fair": weights.get("alpha_fair"),
-                    "curriculum/alpha_sust": weights.get("alpha_sust"),
-                },
-                step=global_step,
-            )
+            payload = {"curriculum/stage": stage_index}
+            if stage_name:
+                payload["curriculum/stage_name"] = stage_name
+            for key in ("alpha_struct", "alpha_fair", "alpha_sust", "tau_primary",
+                        "w_fair_rho", "w_fair_curt", "w_equity", "w_ren", "w_co2",
+                        "w_risk", "w_n1", "w_econ", "w_simplicity", "w_l2rpn"):
+                value = weights.get(key)
+                if value is not None:
+                    payload[f"curriculum/{key}"] = value
+            wandb.log(payload, step=global_step)
 
         _last_stage = stage_index
 

@@ -1,8 +1,14 @@
 """
-Alpha-ordering sweep: every permutation of the MORL objectives, repeated N times.
+Config-ordering sweep: every permutation of the named MORL configs, repeated N times.
 
-Each permutation gets its own W&B group (e.g. base_vector_sus_fair_struc) and its
-runs are spread over one or more SLURM array tasks: an array task holds
+A "config" is a complete set of MORL weights - all ten w_* metric weights,
+tau_primary and the three alpha_* block weights - defined once under
+`sweep.configs` in config_orchestrator.json. The sweep permutes the ORDER in which
+those configs are applied as curriculum stages, so each permutation trains the same
+three configs in a different sequence.
+
+Each permutation gets its own W&B group (e.g. config_sur_fair_sust) and its runs
+are spread over one or more SLURM array tasks: an array task holds
 `parallel.runs_per_job` runs, so the job's CPU footprint can be made small enough
 to schedule without changing what any single run gets.
 
@@ -10,17 +16,17 @@ Single source of truth for the sweep layout: imported by orchestrate_training.py
 (to build the run specs), by submit.sh (to size --array / --ntasks) and by
 SeniorStudent/run_config.py (to synthesise the curriculum for one run).
 """
+import copy
 import itertools
 import json
 from pathlib import Path
 
-# Objective -> weight key in the `morl` / curriculum weight dicts
-OBJECTIVES = ["struct", "fair", "sust"]
-WEIGHT_KEY = {obj: f"alpha_{obj}" for obj in OBJECTIVES}
+# Config names, each resolved through `sweep.configs` to a full weight dict
+CONFIGS = ["survival", "fairness", "sustainability"]
 # Short forms used in group names and run tags
-ABBREV = {"struct": "struc", "fair": "fair", "sust": "sus"}
+ABBREV = {"survival": "sur", "fairness": "fair", "sustainability": "sust"}
 
-DEFAULT_GROUP_PREFIX = "base_vector"
+DEFAULT_GROUP_PREFIX = "config"
 DEFAULT_RUNS_PER_PERMUTATION = 10
 DEFAULT_STAGE_STEPS = [0, 400000, 800000]
 
@@ -46,7 +52,19 @@ def enabled(cfg: dict) -> bool:
 
 
 def objectives(cfg: dict) -> list:
-    return list(_sweep_cfg(cfg).get("objectives") or OBJECTIVES)
+    """Config names taking part in the sweep, in their canonical order."""
+    return list(_sweep_cfg(cfg).get("objectives") or CONFIGS)
+
+
+def configs(cfg: dict) -> dict:
+    """
+    name -> full MORL weight dict, from `sweep.configs`.
+
+    Every name used in `sweep.orders` must be defined here: a stage overlays only
+    the keys it carries, so a partial config would silently leave the previous
+    stage's weights in place.
+    """
+    return dict(_sweep_cfg(cfg).get("configs") or {})
 
 
 def abbrev(cfg: dict) -> dict:
@@ -61,8 +79,11 @@ def stage_steps(cfg: dict) -> list:
 
 def sweep_orders(cfg: dict) -> list:
     """
-    All orderings of the objectives (6 for three objectives), or the explicit
-    `sweep.orders` subset if the config provides one.
+    All orderings of the configs (6 for three configs), or the explicit
+    `sweep.orders` list if the config provides one.
+
+    The explicit form also fixes the order the array tasks are laid out in, which
+    is how the baseline ordering is pushed to the highest array indices.
     """
     explicit = _sweep_cfg(cfg).get("orders")
     if explicit:
@@ -170,10 +191,14 @@ def sweep_runs(cfg: dict, task_index) -> list:
     ]
 
 
-def curriculum_from_order(order, steps=None) -> dict:
+def curriculum_from_order(cfg: dict, order, steps=None) -> dict:
     """
-    Pure-sequential curriculum for one ordering: at each stage boundary exactly
-    one objective is active at weight 1.0 and the others are 0.0.
+    Curriculum for one ordering: stage i applies the config named order[i] from
+    step steps[i] onwards.
+
+    Each stage carries the COMPLETE weight dict, so nothing leaks through from the
+    base `morl` block or from the previous stage - get_scheduled_weights() overlays
+    exactly the keys a stage contains.
 
     Shaped like the JSON `curriculum` block so
     curriculum_scheduler.get_scheduled_weights() consumes it unchanged.
@@ -185,15 +210,26 @@ def curriculum_from_order(order, steps=None) -> dict:
             f"Need at least {len(order)} stage steps for order {order}, got {steps}"
         )
 
-    stages = []
-    for i, active in enumerate(order):
-        weights = {WEIGHT_KEY[obj]: 0.0 for obj in order}
-        weights[WEIGHT_KEY[active]] = 1.0
-        stages.append({"step": int(steps[i]), "weights": weights})
+    defined = configs(cfg)
+    missing = [name for name in order if name not in defined]
+    if missing:
+        raise KeyError(
+            f"Order {order} references config(s) {missing} that are not defined in "
+            f"sweep.configs (defined: {sorted(defined)})"
+        )
+
+    stages = [
+        {
+            "name": name,
+            "step": int(steps[i]),
+            "weights": copy.deepcopy(defined[name]),
+        }
+        for i, name in enumerate(order)
+    ]
 
     return {"enabled": True, "stages": stages}
 
 
 def order_from_env(value: str) -> list:
-    """Parse RUN_ALPHA_ORDER ("struct,fair,sust") into a list."""
+    """Parse RUN_ALPHA_ORDER ("survival,fairness,sustainability") into a list."""
     return [part.strip() for part in str(value).split(",") if part.strip()]

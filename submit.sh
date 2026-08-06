@@ -101,7 +101,7 @@ echo "[SUBMIT] cpus per run      : $CPUS_PER_RUN"
 echo "[SUBMIT] total cpus per job: $CPUS_PER_JOB"
 echo "[SUBMIT] mem per cpu       : $MEM_PER_CPU"
 if [ "$SWEEP_ENABLED" = "1" ]; then
-    echo "[SUBMIT] sweep             : alpha-ordering permutations"
+    echo "[SUBMIT] sweep             : config-ordering permutations"
     echo "[SUBMIT] runs per perm     : $RUNS_PER_PERM (split into $CHUNKS chunk(s) of $RUNS_PER_JOB)"
     read_sweep groups | nl -v0 -w1 -s': ' | sed 's/^/[SUBMIT]   perm /'
 else

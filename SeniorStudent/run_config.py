@@ -69,10 +69,11 @@ def resolve_curriculum(cfg: dict, verbose: bool = True) -> dict:
     """
     Curriculum for this run.
 
-    In sweep mode the orchestrator passes RUN_ALPHA_ORDER (e.g. "sust,fair,struct")
-    and the stages are synthesised from it, so all 6 permutations share one code
-    path and the JSON `curriculum` block stays untouched. Without that env var the
-    configured curriculum is used, exactly as before.
+    In sweep mode the orchestrator passes RUN_ALPHA_ORDER (the config order, e.g.
+    "survival,fairness,sustainability") and the stages are synthesised from
+    sweep.configs, so all 6 permutations share one code path and the JSON
+    `curriculum` block stays untouched. Without that env var the configured
+    curriculum is used, exactly as before.
     """
     order_env = os.environ.get("RUN_ALPHA_ORDER")
     if not order_env:
@@ -80,11 +81,12 @@ def resolve_curriculum(cfg: dict, verbose: bool = True) -> dict:
 
     sweep = load_sweep_config()
     order = sweep.order_from_env(order_env)
-    curriculum = sweep.curriculum_from_order(order, sweep.stage_steps(cfg))
+    curriculum = sweep.curriculum_from_order(cfg, order, sweep.stage_steps(cfg))
     if verbose:
-        print(f"[RUN_CFG] alpha order: {' -> '.join(order)}", flush=True)
+        print(f"[RUN_CFG] config order: {' -> '.join(order)}", flush=True)
         for i, stage in enumerate(curriculum["stages"]):
-            print(f"[RUN_CFG]   stage {i} @ step {stage['step']}: {stage['weights']}",
+            print(f"[RUN_CFG]   stage {i} ({stage.get('name', '?')}) "
+                  f"@ step {stage['step']}: {stage['weights']}",
                   flush=True)
     return curriculum
 

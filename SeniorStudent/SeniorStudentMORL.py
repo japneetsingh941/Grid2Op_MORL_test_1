@@ -431,8 +431,11 @@ if __name__ == '__main__':
         base_config["slurm_array_task_id"] = ARRAY_TASK_ID
         base_config["wandb_group"] = wb["group"]
         base_config["run_index"] = RUN_INDEX
-        # Sweep identity: which alpha ordering this run trains (empty otherwise)
+        # Sweep identity: which config ordering this run trains (empty otherwise).
+        # `alpha_order` is kept under its old name so W&B queries over the earlier
+        # alpha sweep keep working.
         base_config["alpha_order"] = os.environ.get("RUN_ALPHA_ORDER", "")
+        base_config["stage_order"] = os.environ.get("RUN_ALPHA_ORDER", "")
         base_config["sweep_group"] = os.environ.get("RUN_GROUP", "")
         base_config["run_tag"] = os.environ.get("RUN_TAG", "")
         base_config["runs_per_job"] = ORCH_CFG.get("parallel", {}).get("runs_per_job")
