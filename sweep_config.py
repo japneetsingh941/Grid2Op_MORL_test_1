@@ -1,8 +1,14 @@
 """
 Alpha-ordering sweep: every permutation of the MORL objectives, repeated N times.
 
-Each permutation gets its own W&B group (e.g. base_vector_sus_fair_struc) and its
-runs are spread over one or more SLURM array tasks: an array task holds
+The permutation fixes the order the objectives are INTRODUCED in; the alpha weight
+is then shared equally among everything introduced so far, so an ordering
+[A, B, C] trains 1/0/0 -> 0.5/0.5/0 -> 1/3 each. What varies between permutations
+is which objective gets the undivided weight first, and which one only ever
+appears in the final equal split.
+
+Each permutation gets its own W&B group (e.g. alpha_distribute_sus_fair_struc) and
+its runs are spread over one or more SLURM array tasks: an array task holds
 `parallel.runs_per_job` runs, so the job's CPU footprint can be made small enough
 to schedule without changing what any single run gets.
 
@@ -20,7 +26,7 @@ WEIGHT_KEY = {obj: f"alpha_{obj}" for obj in OBJECTIVES}
 # Short forms used in group names and run tags
 ABBREV = {"struct": "struc", "fair": "fair", "sust": "sus"}
 
-DEFAULT_GROUP_PREFIX = "base_vector"
+DEFAULT_GROUP_PREFIX = "alpha_distribute"
 DEFAULT_RUNS_PER_PERMUTATION = 10
 DEFAULT_STAGE_STEPS = [0, 400000, 800000]
 
@@ -172,8 +178,19 @@ def sweep_runs(cfg: dict, task_index) -> list:
 
 def curriculum_from_order(order, steps=None) -> dict:
     """
-    Pure-sequential curriculum for one ordering: at each stage boundary exactly
-    one objective is active at weight 1.0 and the others are 0.0.
+    Weight-sharing curriculum for one ordering: each stage introduces one more
+    objective and splits the alpha weight equally over everything introduced so
+    far, so objectives are added rather than swapped out.
+
+    For an ordering [A, B, C] that is
+
+        stage 0:  A=1.0     B=0.0     C=0.0
+        stage 1:  A=0.5     B=0.5     C=0.0
+        stage 2:  A=1/3     B=1/3     C=1/3
+
+    The final stage is identical for every permutation; the orderings differ in
+    which objective is learned alone first and how long each one has been active
+    by the time training ends.
 
     Shaped like the JSON `curriculum` block so
     curriculum_scheduler.get_scheduled_weights() consumes it unchanged.
@@ -186,9 +203,12 @@ def curriculum_from_order(order, steps=None) -> dict:
         )
 
     stages = []
-    for i, active in enumerate(order):
+    for i in range(len(order)):
+        # Objectives order[0..i] are active, each holding an equal share.
+        share = 1.0 / (i + 1)
         weights = {WEIGHT_KEY[obj]: 0.0 for obj in order}
-        weights[WEIGHT_KEY[active]] = 1.0
+        for obj in order[: i + 1]:
+            weights[WEIGHT_KEY[obj]] = share
         stages.append({"step": int(steps[i]), "weights": weights})
 
     return {"enabled": True, "stages": stages}
